@@ -2,7 +2,7 @@ const DAYS=[["sat","شنبه"],["sun","یکشنبه"],["mon","دوشنبه"],["t
 const SHIFTS=[["m","صبح"],["e","عصر"]];
 const DAYN=Object.fromEntries(DAYS), SHN=Object.fromEntries(SHIFTS);
 const SPECS=["عمومی","ارتودنسی","کودکان","اندو (ریشه)","جراحی","پریو (لثه)","ایمپلنت","ترمیمی و زیبایی","پروتز"];
-const ROLEN={doctor:"دکتر",assistant:"دستیار",reception:"منشی"};
+const ROLEN={doctor:"دکتر",assistant:"دستیار",reception:"منشی",insurance:"مسئول بیمه"};
 const fa=n=>Number(n).toLocaleString("fa-IR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid=()=>"r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -120,6 +120,8 @@ async function exportInsXlsx(){
     if(!LDB.hasAny("patients")) await seedPatientsIfMissing();
     if(!LDB.hasAny("inventory")) await seedInventoryIfMissing();
   }
+  { const c=(await LDB.doc("clinic/config").get()).data();
+    if(c&&!c.staff.some(x=>x.role==="insurance")){ c.staff.push({id:"i1",name:"کامران",role:"insurance"}); c.usedIds=[...new Set([...(c.usedIds||[]),"i1"])]; await LDB.doc("clinic/config").set(c); } }
   if(!LDB.hasAny("implants")){ cfg=(await LDB.doc("clinic/config").get()).data(); await IMP.seed(); }
   db.doc("clinic/config").onSnapshot(sn=>{cfg=sn.exists?sn.data():null;loaded.cfg=true;render()},()=>{});
   db.collection("avail").onSnapshot(q=>{avail={};q.docs.forEach(x=>avail[x.id]=x.data());loaded.avail=true;render()},()=>{});
@@ -140,8 +142,8 @@ $("#whoSel").addEventListener("change",e=>{who=e.target.value;FB.act("who:"+who)
 function renderWho(){
   const sel=$("#whoSel"); if(!cfg) return;
   let h='<option value="manager">مدیر مجموعه</option>';
-  for(const r of ["doctor","assistant","reception"]){
-    h+=`<optgroup label="${ROLEN[r]}ها">`+ofRole(r).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")+"</optgroup>";
+  for(const r of ["doctor","assistant","reception","insurance"]){
+    h+=`<optgroup label="${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}">`+ofRole(r).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")+"</optgroup>";
   }
   if(sel.dataset.sig!==h){sel.innerHTML=h;sel.dataset.sig=h}
   if(who!=="manager"&&!byId(who)) who="manager";
@@ -190,6 +192,7 @@ function myShifts(id){
 function staffView(id){
   const me=byId(id), a=avail[id], p=staffParse[id];
   let h=`<h2>سلام ${esc(me.name)}</h2>`;
+  if(me.role==="insurance") return h+insuranceTab();
   h+=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+myRequestsPanel(id);
   const ms=myShifts(id);
   if(ms){
@@ -504,10 +507,10 @@ function reportTab(){
   return h+`</tbody></table></div>`;
 }
 
-function missingList(){return (cfg.staff||[]).filter(s=>!avail[s.id]?.confirmed)}
+function missingList(){return (cfg.staff||[]).filter(s=>s.role!=="insurance"&&!avail[s.id]?.confirmed)}
 
 function schedTab(){
-  const miss=missingList(), total=cfg.staff.length;
+  const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance").length;
   const openAl=!!sched&&((sched.alerts||[]).some(a=>!a.resolved));
   let h=sched?requestsPanel()+(openAl?alertsPanel():""):"";
   h+=`<div class="panel">
@@ -547,7 +550,7 @@ function availTab(){
     <p class="note" style="margin:8px 0 0">«شروع هفته جدید» حضورها، قوانینِ فقط‌این‌هفته و برنامه قبلی را پاک می‌کند.</p></div>`;
   h+=`<div class="panel scroll"><table class="av"><thead><tr><th>نام</th>`+DAYS.map(([,n])=>`<th colspan="2">${n}</th>`).join("")+`</tr><tr><th></th>`+DAYS.map(()=>`<th class="note">ص</th><th class="note">ع</th>`).join("")+`</tr></thead><tbody>`;
   for(const r of ["doctor","assistant","reception"]){
-    h+=`<tr class="rolehead"><td colspan="13">${ROLEN[r]}ها</td></tr>`;
+    h+=`<tr class="rolehead"><td colspan="13">${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}</td></tr>`;
     for(const s of ofRole(r)){
       const a=avail[s.id];
       h+=`<tr><td>${esc(s.name)}${s.specialty?` <span class="note">(${esc(s.specialty)})</span>`:""}${a?.confirmed?"":' <span class="note">(نفرستاده)</span>'}</td>`+
@@ -704,8 +707,8 @@ async function ruleApply(){
 
 function staffTab(){
   let h=`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
-  for(const r of ["doctor","assistant","reception"]){
-    h+=`<p style="margin:12px 0 6px"><strong>${ROLEN[r]}ها</strong></p>`;
+  for(const r of ["doctor","assistant","reception","insurance"]){
+    h+=`<p style="margin:12px 0 6px"><strong>${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}</strong></p>`;
     for(const s of ofRole(r)) h+=`<div class="staffrow"><span class="tag">${ROLEN[r]}</span><input type="text" data-name="${s.id}" value="${esc(nameDraft[s.id]??s.name)}" aria-label="نام">${r==="doctor"?`<select data-spec="${s.id}" aria-label="تخصص">${SPECS.map(x=>`<option ${(specDraft[s.id]??s.specialty)===x?"selected":""}>${x}</option>`).join("")}</select>`:""}<button class="x" data-rm="${s.id}" aria-label="حذف ${esc(s.name)}">${rmArm===s.id?"مطمئنید؟ حذف کامل":"حذف"}</button></div>`;
   }
   return h+`<p class="row" style="margin-top:12px"><button class="btn primary" data-act="save-names">ذخیره نام‌ها</button></p></div>`;

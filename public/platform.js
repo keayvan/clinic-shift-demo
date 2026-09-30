@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.6.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -63,7 +63,8 @@ async function seedDemo() {
     S("d5", "دکتر حسینی", "doctor", "اندو (ریشه)"), S("d6", "دکتر نوری", "doctor", "جراحی"), S("d7", "دکتر صادقی", "doctor", "عمومی"), S("d8", "دکتر جعفری", "doctor", "پریو (لثه)"),
     S("a1", "مریم", "assistant"), S("a2", "سارا", "assistant"), S("a3", "نگار", "assistant"), S("a4", "زهرا", "assistant"), S("a5", "الهام", "assistant"),
     S("a6", "مینا", "assistant"), S("a7", "فاطمه", "assistant"), S("a8", "لیلا", "assistant"), S("a9", "نسترن", "assistant"), S("a10", "پریسا", "assistant"),
-    S("r1", "آزاده", "reception"), S("r2", "شیما", "reception"), S("r3", "رویا", "reception"), S("r4", "ندا", "reception"), S("r5", "هانیه", "reception")
+    S("r1", "آزاده", "reception"), S("r2", "شیما", "reception"), S("r3", "رویا", "reception"), S("r4", "ندا", "reception"), S("r5", "هانیه", "reception"),
+    S("i1", "کامران", "insurance")
   ];
   const pairings = { d1: ["a1", "a2", "a3"], d2: ["a3", "a4", "a5"], d3: ["a5", "a6", "a7"], d4: ["a7", "a8", "a9"], d5: ["a9", "a10", "a1"], d6: ["a2", "a4", "a6"], d7: ["a8", "a10", "a3"], d8: ["a1", "a5", "a9"] };
   await LDB.doc("clinic/config").set({ staff, pairings, rules: [], settings: { chairs: 5, receptionPerShift: 2 }, usedIds: staff.map(s => s.id) });
@@ -323,6 +324,7 @@ const Shell = (() => {
         if (reg.waiting && navigator.serviceWorker.controller) { updateReady = true; banners(); }
         reg.addEventListener("updatefound", () => watch(reg.installing));
         setInterval(() => reg.update().catch(() => {}), 30 * 60000);
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reg.update().catch(() => {}); });
       }).catch(() => {});
       let reloaded = false;
       navigator.serviceWorker.addEventListener("controllerchange", () => { if (!reloaded) { reloaded = true; location.reload(); } });
