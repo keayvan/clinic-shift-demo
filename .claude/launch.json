@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "clinic-shift-demo",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "ADMIN_PASSWORD=test PORT=3000 node server.js"],
+      "port": 3000
+    }
+  ]
+}
