@@ -1613,7 +1613,7 @@ function outcomeMsg(results){
   }).join(" ");
 }
 function openPatientSheet(pid){
-  patDraft.openId=pid; patDraft.noteText=""; patDraft.noteErr=""; patDraft.pending=null; patDraft.msg=""; patDraft.editingInfo=false;
+  patDraft.openId=pid; patDraft.noteText=""; patDraft.noteErr=""; patDraft.pending=null; patDraft.msg=""; patDraft.editingInfo=false; patDraft.opgMsg="";
   renderPatientSheet();
 }
 function planItemsPlain(p){ return p.plan.length?p.plan.map(it=>`${it.status==="done"?"✓":"—"} ${planItemLabel(it)}`).join("<br>"):"کاری ثبت نشده"; }
@@ -1757,6 +1757,9 @@ function renderPatientSheet(){
     }
   }
   body+=`</div>`;
+  body+=`<hr><div class="row" style="justify-content:space-between"><strong>OPG و تصاویر</strong><label class="btn">📷 آپلود OPG<input type="file" id="patOpg" accept="image/*" multiple hidden></label></div>
+    ${patDraft.opgMsg?`<p class="${patDraft.opgBad?"warn":"okline"}">${esc(patDraft.opgMsg)}</p>`:""}
+    <div class="imp-opgs">${(p.opg||[]).map(o=>`<figure><button data-popg="${o.id}"><img src="${o.thumb}" alt="OPG"></button><figcaption>${esc(o.date)} <button class="x" data-popg-del="${o.id}">حذف</button></figcaption></figure>`).join("")||`<p class="note">هنوز تصویری آپلود نشده.</p>`}</div>`;
   body+=`<hr>`+financeHtml(p);
   if(isMgr) body+=`${patErr?`<p class="warn">${esc(patErr)}</p>`:""}<p class="row" style="margin-top:16px"><button class="btn ${patDraft.editingInfo?"primary":"quiet"}" data-act="pat-toggle-edit">${patDraft.editingInfo?"ذخیره و پایان ویرایش":"ویرایش اطلاعات"}</button></p>`;
   Shell.sheet(body,root=>{
@@ -1766,6 +1769,9 @@ function renderPatientSheet(){
     root.querySelectorAll("[data-delpay]").forEach(b=>b.onclick=()=>deletePayment(b.dataset.delpay));
     root.querySelectorAll("[data-inv]").forEach(b=>b.onclick=()=>{const [payId,mode]=b.dataset.inv.split("|"); mode==="pdf"?invoiceDownloadPdf(patDraft.openId,payId,b):invoicePrint(patDraft.openId,payId)});
     root.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>act(b.dataset.act,b));
+    const po=root.querySelector("#patOpg"); if(po) po.onchange=()=>patOpgUpload([...po.files]);
+    root.querySelectorAll("[data-popg]").forEach(b=>b.onclick=()=>patOpgView(b.dataset.popg));
+    root.querySelectorAll("[data-popg-del]").forEach(b=>b.onclick=()=>{if(b.dataset.arm!=="1"){b.dataset.arm="1";b.textContent="مطمئنید؟";return}patOpgDel(b.dataset.popgDel)});
     const t=root.querySelector("#patNoteTxt"); if(t) t.oninput=e=>{patDraft.noteText=e.target.value;patDraft.msg=""};
     const pa=root.querySelector("#payAmount"); if(pa) pa.oninput=e=>payDraft.amount=e.target.value;
     const pm=root.querySelector("#payMethod"); if(pm) pm.onchange=e=>payDraft.method=e.target.value;
@@ -1774,6 +1780,28 @@ function renderPatientSheet(){
     const pmo=root.querySelector("#payMonth"); if(pmo) pmo.onchange=e=>{payDraft.jm=+e.target.value;renderPatientSheet()};
     const pyr=root.querySelector("#payYear"); if(pyr) pyr.onchange=e=>{payDraft.jy=+e.target.value;renderPatientSheet()};
   });
+}
+async function patOpgUpload(files){
+  const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
+  const {IDB,shrink}=IMP.files; p.opg=p.opg||[]; patDraft.opgBad=false;
+  for(const f of files){
+    if(!f.type.startsWith("image/")){patDraft.opgBad=true;patDraft.opgMsg="فقط فایل تصویری قابل آپلود است.";continue}
+    try{const full=await shrink(f,2000,.85), thumb=await shrink(f,240,.7), id="popg"+uid();
+      await IDB.put(id,full); p.opg.push({id,name:f.name.slice(0,60),date:new Date().toLocaleDateString("fa-IR"),thumb});}
+    catch(e){patDraft.opgBad=true;patDraft.opgMsg="ذخیره تصویر انجام نشد (شاید حافظه گوشی پر است)."}
+  }
+  if(!patDraft.opgBad) patDraft.opgMsg="تصویر ذخیره شد.";
+  await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
+}
+async function patOpgView(id){
+  const p=patients[patDraft.openId], o=(p.opg||[]).find(x=>x.id===id); let src=null; try{src=await IMP.files.IDB.get(id)}catch(e){} src=src||o?.thumb;
+  Shell.sheet(`<h2>OPG — ${esc(p.name)}</h2><p class="note">${esc(o?.date||"")}</p><img src="${src}" alt="OPG" style="width:100%;border-radius:8px;background:#000">
+    <p class="row" style="margin-top:8px"><button class="btn" data-back>بازگشت به پرونده</button><a class="btn quiet" href="${src}" download="OPG-${esc(p.name)}.jpg">ذخیره تصویر</a></p>`,root=>{root.querySelector("[data-back]").onclick=renderPatientSheet});
+}
+async function patOpgDel(id){
+  const pid=patDraft.openId, p=structuredClone(patients[pid]); p.opg=(p.opg||[]).filter(x=>x.id!==id);
+  try{await IMP.files.IDB.del(id)}catch(e){} patDraft.opgMsg="تصویر حذف شد."; patDraft.opgBad=false;
+  await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
 }
 async function patInfoSave(){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;

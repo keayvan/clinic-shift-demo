@@ -481,5 +481,5 @@ const IMP = (() => {
     LDB.doc("implant/settings").onSnapshot(sn => { settings = sn.exists ? sn.data() : { access: {}, cards: [] }; render(); });
   }
   const badge = () => canMoney(who) ? Object.values(cases).filter(c => !c.archived && fin(c).inst.some(i => i.left > 0 && i.days <= 0)).length : 0;
-  return { start, seed, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin } };
+  return { start, seed, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin }, files: { IDB, shrink } };
 })();
