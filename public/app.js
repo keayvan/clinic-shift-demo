@@ -122,6 +122,10 @@ async function exportInsXlsx(){
   }
   { const c=(await LDB.doc("clinic/config").get()).data();
     if(c&&!c.staff.some(x=>x.role==="insurance")){ c.staff.push({id:"i1",name:"کامران",role:"insurance"}); c.usedIds=[...new Set([...(c.usedIds||[]),"i1"])]; await LDB.doc("clinic/config").set(c); } }
+  { const INS=[["تامین‌اجتماعی",50e6],["بیمهٔ ملی",40e6],["رازی",60e6],[null,null]]; let n=0;
+    for(const d of (await LDB.collection("patients").get()).docs){ const p=d.data(); if("insurance" in p) continue;
+      const [name,cap]=INS[n++%INS.length]; p.insurance={name,number:name?String(100000000+Math.floor(Math.random()*9e8)):null,cap};
+      await LDB.doc("patients/"+d.id).set(p); } }
   if(!LDB.hasAny("implants")){ cfg=(await LDB.doc("clinic/config").get()).data(); await IMP.seed(); }
   db.doc("clinic/config").onSnapshot(sn=>{cfg=sn.exists?sn.data():null;loaded.cfg=true;render()},()=>{});
   db.collection("avail").onSnapshot(q=>{avail={};q.docs.forEach(x=>avail[x.id]=x.data());loaded.avail=true;render()},()=>{});
@@ -1725,7 +1729,9 @@ function renderPatientSheet(){
       <div style="margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
       <div style="margin-top:4px"><strong>بیماری‌های زمینه‌ای: </strong>${esc(p.conditions||"—")}</div>
       <div style="margin-top:4px"><strong>داروهای مصرفی: </strong>${esc(p.medications||"—")}</div>
-      ${p.insurance?.name?`<div style="margin-top:4px"><strong>بیمه: </strong>${esc(p.insurance.name)}${p.insurance.number?" ("+esc(p.insurance.number)+")":""}</div>`:""}
+      <div style="margin-top:4px"><strong>نام بیمه: </strong>${esc(p.insurance?.name||"—")}</div>
+      <div style="margin-top:2px">شمارهٔ بیمه: ${esc(p.insurance?.number||"—")}</div>
+      <div style="margin-top:2px">سقف بیمه: ${p.insurance?.cap?fa(p.insurance.cap)+" تومان":"—"}</div>
       </div>
       ${p.allergies?`<p class="warn" style="margin-top:6px"><strong>⚠ آلرژی: </strong>${esc(p.allergies)}</p>`:""}`;
   const rows=p.plan.map(it=>!canEditPlan?`<div class="row" style="justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding:6px 0">

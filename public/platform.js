@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.6.0";
+const APP_VERSION = "2.6.1";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -45,7 +45,7 @@ const LDB = (() => {
       async delete() { del(path); emit(path); },
       onSnapshot(cb) { subs.push({ kind: "doc", path, cb }); setTimeout(() => cb(snapDoc(path))); return () => {}; }
     }),
-    collection: c => ({ onSnapshot(cb) { subs.push({ kind: "col", path: c, cb }); setTimeout(() => cb(snapCol(c))); return () => {}; } }),
+    collection: c => ({ async get() { return snapCol(c); }, onSnapshot(cb) { subs.push({ kind: "col", path: c, cb }); setTimeout(() => cb(snapCol(c))); return () => {}; } }),
     hasData: () => !!read("clinic/config"),
     hasAny: c => { const pre = NS + "db/" + c + "/"; for (let i = 0; i < localStorage.length; i++) { if ((localStorage.key(i) || "").startsWith(pre)) return true; } return false; },
     wipe() {
