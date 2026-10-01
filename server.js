@@ -3,8 +3,10 @@
    - POST /api/feedback     stores feedback/log events (JSON lines) in DATA_DIR/feedback.jsonl
    - GET  /admin            developer dashboard (HTTP Basic auth, password from ADMIN_PASSWORD)
    - GET  /admin/export.json | /admin/export.csv
+   - GET/POST /api/db       shared clinic database (DATA_DIR/db.json), header X-Clinic-Key = CLINIC_PASSWORD
    - GET  /healthz
-   Env: PORT (default 3000), DATA_DIR (default ./data), ADMIN_PASSWORD (required for /admin), ADMIN_USER (default "dev") */
+   Env: PORT (default 3000), DATA_DIR (default ./data), ADMIN_PASSWORD (required for /admin), ADMIN_USER (default "dev"),
+        CLINIC_PASSWORD (required for /api/db) */
 "use strict";
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
 
@@ -14,6 +16,7 @@ const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const FILE = path.join(DATA, "feedback.jsonl");
 const ADMIN_USER = process.env.ADMIN_USER || "dev";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
+const CLINIC_PASSWORD = process.env.CLINIC_PASSWORD || "";
 fs.mkdirSync(DATA, { recursive: true });
 
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
@@ -100,6 +103,47 @@ async function postFeedback(req, res) {
   send(res, 200, JSON.stringify({ ok: true, stored: events.length }), { "Content-Type": "application/json" });
 }
 
+
+/* ---- shared database: { seq, docs: { path: { d: data|null, s: seq } } }, last write wins in arrival order ---- */
+const DBFILE = path.join(DATA, "db.json");
+const store = (() => { try { return JSON.parse(fs.readFileSync(DBFILE, "utf8")); } catch (e) { return { seq: 0, docs: {} }; } })();
+let saveTimer = null;
+function saveStore() {
+  if (saveTimer) return;
+  saveTimer = setTimeout(() => { saveTimer = null; const tmp = DBFILE + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(store)); fs.renameSync(tmp, DBFILE); }, 200);
+}
+function flushStore() { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; const tmp = DBFILE + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(store)); fs.renameSync(tmp, DBFILE); } }
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { flushStore(); process.exit(0); });
+function clinicAuthed(req) {
+  if (!CLINIC_PASSWORD) return false;
+  const a = crypto.createHash("sha256").update(String(req.headers["x-clinic-key"] || "")).digest();
+  const b = crypto.createHash("sha256").update(CLINIC_PASSWORD).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+const DOC_PATH = /^[A-Za-z0-9_\-]{1,80}(\/[A-Za-z0-9_\-]{1,80}){1,3}$/;
+async function dbApi(req, res, url) {
+  const J = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
+  if (!CLINIC_PASSWORD) return send(res, 503, JSON.stringify({ error: "disabled" }), J);
+  if (!clinicAuthed(req)) return send(res, limited(req) ? 429 : 401, JSON.stringify({ error: "auth" }), J);
+  if (req.method === "GET") {
+    const since = +url.searchParams.get("since") || 0, docs = {};
+    for (const [p, v] of Object.entries(store.docs)) if (v.s > since) docs[p] = v.d;
+    return send(res, 200, JSON.stringify({ seq: store.seq, docs }), J);
+  }
+  if (req.method === "POST") {
+    let body;
+    try { body = JSON.parse(await readBody(req, 8 * 1024 * 1024)); } catch (e) { return send(res, 400, JSON.stringify({ error: "bad json" }), J); }
+    const ops = Array.isArray(body.ops) ? body.ops.slice(0, 5000) : [];
+    for (const o of ops) {
+      if (!o || typeof o.p !== "string" || !DOC_PATH.test(o.p)) continue;
+      store.seq++; store.docs[o.p] = { d: o.d && typeof o.d === "object" ? o.d : null, s: store.seq };
+    }
+    if (ops.length) saveStore();
+    return send(res, 200, JSON.stringify({ seq: store.seq }), J);
+  }
+  return send(res, 405, "method not allowed");
+}
+
 /* ---- admin ---- */
 function authed(req) {
   if (!ADMIN_PASSWORD) return false;
@@ -152,6 +196,7 @@ http.createServer(async (req, res) => {
   try {
     if (url.pathname === "/healthz") return send(res, 200, "ok", { "Content-Type": "text/plain" });
     if (url.pathname === "/api/feedback" && req.method === "POST") return await postFeedback(req, res);
+    if (url.pathname === "/api/db") return await dbApi(req, res, url);
     if (url.pathname.startsWith("/admin")) {
       if (!ADMIN_PASSWORD) return send(res, 503, "Admin is disabled: set ADMIN_PASSWORD.", { "Content-Type": "text/plain; charset=utf-8" });
       if (!authed(req)) return send(res, 401, "auth required", { "WWW-Authenticate": 'Basic realm="dev", charset="UTF-8"', "Content-Type": "text/plain" });

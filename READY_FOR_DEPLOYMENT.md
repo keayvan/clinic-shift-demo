@@ -145,6 +145,7 @@ lara up
 ### ۴. Environment Variables
 ```
 ADMIN_PASSWORD=your-strong-password
+CLINIC_PASSWORD=رمز-کلینیک   # برای دیتابیس مشترک؛ گوشی‌ها با همین رمز وصل می‌شوند
 NODE_ENV=production
 PORT=3000
 ```
@@ -157,6 +158,7 @@ PORT=3000
 - [ ] تمام کد push شده است
 - [ ] Node.js ۱۸+ روی سرور نصب است
 - [ ] ADMIN_PASSWORD set شده است
+- [ ] CLINIC_PASSWORD set شده است (دیتابیس مشترک در DATA_DIR/db.json روی دیسک feedback-data)
 - [ ] Port ۳۰۰۰ (یا دیگری) در دسترس است
 - [ ] HTTPS فعال شده است (برای PWA)
 - [ ] مرورگر آخرین نسخه است

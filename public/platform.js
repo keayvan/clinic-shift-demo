@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.8.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -36,22 +36,90 @@ const LDB = (() => {
       }
     }, 0);
   };
+  let hook = null;
+  const changed = path => { emit(path); if (hook) hook(path, read(path)); };
   const guard = fn => { try { fn(); } catch (e) { throw Object.assign(new Error("حافظه مرورگر پر است یا در دسترس نیست."), { code: "storage" }); } };
   return {
     doc: path => ({
       async get() { return snapDoc(path); },
-      async set(d) { guard(() => write(path, clone(d))); emit(path); },
-      async update(d) { guard(() => write(path, { ...(read(path) || {}), ...clone(d) })); emit(path); },
-      async delete() { del(path); emit(path); },
+      async set(d) { guard(() => write(path, clone(d))); changed(path); },
+      async update(d) { guard(() => write(path, { ...(read(path) || {}), ...clone(d) })); changed(path); },
+      async delete() { del(path); changed(path); },
       onSnapshot(cb) { subs.push({ kind: "doc", path, cb }); setTimeout(() => cb(snapDoc(path))); return () => {}; }
     }),
     collection: c => ({ async get() { return snapCol(c); }, onSnapshot(cb) { subs.push({ kind: "col", path: c, cb }); setTimeout(() => cb(snapCol(c))); return () => {}; } }),
     hasData: () => !!read("clinic/config"),
     hasAny: c => { const pre = NS + "db/" + c + "/"; for (let i = 0; i < localStorage.length; i++) { if ((localStorage.key(i) || "").startsWith(pre)) return true; } return false; },
+    onChange(fn) { hook = fn; },
+    applyRemote(path, d) { if (d) guard(() => write(path, d)); else del(path); emit(path); },
+    all() { const out = {}, pre = NS + "db/"; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(pre)) out[k.slice(pre.length)] = read(k.slice(pre.length)); } return out; },
     wipe() {
       const keys = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(NS + "db/")) keys.push(k); }
       keys.forEach(k => localStorage.removeItem(k));
     }
+  };
+})();
+
+
+/* ---------- sync with the clinic server (shared database) ----------
+   Local changes go to an outbox and are pushed when online; remote changes are pulled every 15s.
+   A path with an unsent local change ignores remote updates until it is pushed. */
+const SYNC = (() => {
+  const K = NS + "sync:";
+  const get = (k, def) => { try { const v = localStorage.getItem(K + k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } };
+  const put = (k, v) => { try { v == null ? localStorage.removeItem(K + k) : localStorage.setItem(K + k, JSON.stringify(v)); } catch (e) {} };
+  let state = { ok: null, at: 0, err: "" }, busy = false, listeners = [];
+  const key = () => get("key", "");
+  const setState = x => { state = { ...state, ...x }; listeners.forEach(f => f(state)); };
+  const api = async (method, q, body) => {
+    const r = await fetch("api/db" + (q || ""), { method, headers: { "X-Clinic-Key": key(), ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+    if (r.status === 401 || r.status === 429) throw Object.assign(new Error("رمز کلینیک درست نیست."), { code: "auth" });
+    if (r.status === 503) throw Object.assign(new Error("سرور هنوز برای اطلاعات مشترک تنظیم نشده است."), { code: "off" });
+    if (!r.ok) throw new Error("server " + r.status);
+    return r.json();
+  };
+  LDB.onChange((path, d) => { if (!key()) return; const out = get("out", {}); out[path] = d; put("out", out); schedule(); });
+  let timer = null;
+  const schedule = () => { clearTimeout(timer); timer = setTimeout(run, 800); };
+  async function run() {
+    if (!key() || busy || !navigator.onLine) return;
+    busy = true;
+    try {
+      const out = get("out", {}), paths = Object.keys(out);
+      if (paths.length) {
+        await api("POST", "", { ops: paths.map(p => ({ p, d: out[p] })) });
+        const now = get("out", {}); for (const p of paths) if (JSON.stringify(now[p]) === JSON.stringify(out[p])) delete now[p]; put("out", now);
+      }
+      const r = await api("GET", "?since=" + get("seq", 0)), pend = get("out", {});
+      for (const [p, d] of Object.entries(r.docs)) if (!(p in pend)) LDB.applyRemote(p, d);
+      put("seq", r.seq); setState({ ok: true, at: Date.now(), err: "" });
+    } catch (e) { setState({ ok: false, err: e.code ? e.message : "اتصال به سرور برقرار نشد؛ تغییرها روی گوشی می‌مانند و بعداً ارسال می‌شوند." }); }
+    busy = false;
+    if (Object.keys(get("out", {})).length) schedule();
+  }
+  setInterval(() => { if (document.visibilityState === "visible") run(); }, 15000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") run(); });
+  addEventListener("online", run);
+  return {
+    enabled: () => !!key(),
+    state: () => ({ ...state, pending: Object.keys(get("out", {})).length }),
+    subscribe(f) { listeners.push(f); },
+    sync: run,
+    /* first pull at startup, so a newly connected phone does not seed demo data over the clinic's */
+    async boot() { if (!key()) return; await Promise.race([run(), new Promise(r => setTimeout(r, 4000))]); },
+    /* connect this phone: if the server is empty, upload this phone's data; otherwise replace local data with the server's */
+    async connect(pass) {
+      put("key", pass);
+      let r;
+      try { r = await api("GET", "?since=0"); } catch (e) { put("key", null); throw e; }
+      if (!Object.values(r.docs).some(Boolean)) {
+        const all = LDB.all(); await api("POST", "", { ops: Object.entries(all).map(([p, d]) => ({ p, d })) });
+        put("out", {}); put("seq", 0); await run(); return "uploaded";
+      }
+      LDB.wipe(); for (const [p, d] of Object.entries(r.docs)) if (d) LDB.applyRemote(p, d);
+      put("out", {}); put("seq", r.seq); return "downloaded";
+    },
+    disconnect() { put("key", null); put("out", null); put("seq", null); setState({ ok: null, err: "" }); }
   };
 })();
 

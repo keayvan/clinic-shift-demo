@@ -115,6 +115,8 @@ async function exportInsXlsx(){
 
 (async()=>{
   db=LDB;
+  await SYNC.boot();
+  SYNC.subscribe(()=>{ if(who==="manager") render(); });
   if(!LDB.hasData()) await seedDemo();
   else{
     if(!LDB.hasAny("patients")) await seedPatientsIfMissing();
@@ -477,12 +479,44 @@ async function reqApply(){
 }
 
 /* ---------- manager view ---------- */
+/* ---------- shared database (server sync) ---------- */
+function syncBar(){
+  if(!SYNC.enabled()) return `<div class="panel row" style="justify-content:space-between;align-items:center"><span class="note">اطلاعات فقط روی همین گوشی است.</span><button class="btn" data-act="sync-open">اتصال به سرور کلینیک</button></div>`;
+  const st=SYNC.state();
+  const txt=st.ok===false?`<span class="warn">${esc(st.err)}</span>`:st.ok?`<span class="okline">همگام با سرور${st.pending?` · ${fa(st.pending)} تغییر در صف ارسال`:""}</span>`:`<span class="note">در حال اتصال…</span>`;
+  return `<div class="panel row" style="justify-content:space-between;align-items:center">${txt}<button class="btn quiet" data-act="sync-open">تنظیمات سرور</button></div>`;
+}
+function syncSheet(msg="",bad=false){
+  const on=SYNC.enabled();
+  Shell.sheet(`<h2>اطلاعات مشترک کلینیک</h2>
+    ${on?`<p>این گوشی به سرور کلینیک وصل است. بیماران، انبار، نوبت‌ها، شیفت‌ها و ایمپلنت با بقیهٔ گوشی‌ها مشترک است.</p>
+      <p class="note">عکس‌های اصلی OPG فقط روی گوشی‌ای که آپلود شده‌اند می‌مانند؛ تصویر کوچکشان همه‌جا دیده می‌شود.</p>
+      <p class="row"><button class="btn" data-sync="now">همگام‌سازی همین الان</button><button class="btn quiet" data-sync="off">قطع اتصال این گوشی</button></p>`
+    :`<p>با رمز کلینیک، این گوشی به سرور وصل می‌شود و اطلاعات بین همهٔ گوشی‌ها مشترک می‌شود.</p>
+      <ul><li>اگر سرور خالی باشد، اطلاعات <strong>همین گوشی</strong> روی سرور می‌رود.</li><li>اگر سرور اطلاعات داشته باشد، اطلاعات این گوشی <strong>با اطلاعات سرور جایگزین</strong> می‌شود.</li></ul>
+      <label class="note" for="syncPass">رمز کلینیک</label><input type="password" id="syncPass" autocomplete="current-password">
+      <p class="row" style="margin-top:8px"><button class="btn primary" data-sync="connect">اتصال</button></p>`}
+    ${msg?`<p class="${bad?"warn":"okline"}">${esc(msg)}</p>`:""}`,root=>{
+    root.querySelectorAll("[data-sync]").forEach(b=>b.onclick=async()=>{
+      const a=b.dataset.sync;
+      if(a==="now"){await SYNC.sync();const st=SYNC.state();return syncSheet(st.ok?"همگام شد.":st.err,!st.ok)}
+      if(a==="off"){if(b.dataset.arm!=="1"){b.dataset.arm="1";b.textContent="مطمئنید؟ قطع شود";return} SYNC.disconnect();render();return syncSheet("اتصال این گوشی قطع شد. اطلاعات فعلی روی گوشی می‌ماند.")}
+      if(a==="connect"){
+        const pass=(root.querySelector("#syncPass").value||"").trim(); if(!pass) return syncSheet("رمز کلینیک را بنویس.",true);
+        b.disabled=true; b.textContent="در حال اتصال…";
+        try{const r=await SYNC.connect(pass); if(r==="downloaded") return location.reload(); render(); syncSheet("وصل شد. اطلاعات این گوشی روی سرور رفت.")}
+        catch(e){syncSheet(e.code?e.message:"اتصال به سرور برقرار نشد. اینترنت را چک کن.",true)}
+      }
+    });
+  });
+}
+
 function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
   const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")]];
-  let h=topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
+  let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
   h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
@@ -2242,6 +2276,7 @@ async function act(a,btn){
   if(a==="print") return doPrint();
   if(a==="pdf") return downloadPdf(btn);
   if(a==="xlsx") return downloadXlsx();
+  if(a==="sync-open") return syncSheet();
   if(a==="seen"){try{localStorage.setItem("seen_"+who,String(Date.now()))}catch(e){};return render()}
   if(a==="mgr-parse") return mgrParseRun();
   if(a==="mgr-apply") return mgrApply();
