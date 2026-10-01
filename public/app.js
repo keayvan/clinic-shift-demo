@@ -494,7 +494,7 @@ function syncSheet(msg="",bad=false){
       <p class="row"><button class="btn" data-sync="now">همگام‌سازی همین الان</button><button class="btn quiet" data-sync="off">قطع اتصال این گوشی</button></p>`
     :`<p>با رمز کلینیک، این گوشی به سرور وصل می‌شود و اطلاعات بین همهٔ گوشی‌ها مشترک می‌شود.</p>
       <ul><li>اگر سرور خالی باشد، اطلاعات <strong>همین گوشی</strong> روی سرور می‌رود.</li><li>اگر سرور اطلاعات داشته باشد، اطلاعات این گوشی <strong>با اطلاعات سرور جایگزین</strong> می‌شود.</li></ul>
-      <label class="note" for="syncPass">رمز کلینیک</label><input type="password" id="syncPass" autocomplete="current-password">
+      <label class="note" for="syncPass">رمز کلینیک</label><input type="password" id="syncPass" autocomplete="current-password" style="display:block;width:100%;margin-top:4px">
       <p class="row" style="margin-top:8px"><button class="btn primary" data-sync="connect">اتصال</button></p>`}
     ${msg?`<p class="${bad?"warn":"okline"}">${esc(msg)}</p>`:""}`,root=>{
     root.querySelectorAll("[data-sync]").forEach(b=>b.onclick=async()=>{
