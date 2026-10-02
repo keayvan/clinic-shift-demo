@@ -50,7 +50,7 @@ function todayJalali(){ const d=new Date(); return gregorianToJalali(d.getFullYe
 
 let db=null, sample=true, downloads=true;
 let cfg=null, avail={}, sched=null, archive={}, patients={}, inventory={}, appts={}, loaded={cfg:false,avail:false,sched:false};
-let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="";
+let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=false;
 let invDraft={name:"",unit:"",qty:"",minQty:""}, invErr="";
 let apptDraft={name:"",doctor:"",jy:null,jm:null,jd:null,time:"",note:""}, apptErr="", apptMsg="";
 let patSearch="";
@@ -512,10 +512,14 @@ function syncSheet(msg="",bad=false){
 }
 
 /* ---------- feedback inbox (manager) ---------- */
-let fbList=null, fbErr="", fbLoading=false, fbType="all";
+let fbList=null, fbErr="", fbLoading=false, fbType="all", fbAt=0, fbShowDone=false;
+const fbDoneIds=()=>{try{return new Set(JSON.parse(localStorage.getItem("fb_done")||"[]"))}catch(e){return new Set()}};
+const fbUndoneIds=()=>{try{return new Set(JSON.parse(localStorage.getItem("fb_undone")||"[]"))}catch(e){return new Set()}};
+const fbIsDone=e=>fbDoneIds().has(e.id)||(!!e.resolution&&!fbUndoneIds().has(e.id));
+function fbSetDone(id,on){const s=fbDoneIds(),u=fbUndoneIds();if(on){s.add(id);u.delete(id)}else{s.delete(id);u.add(id)}try{localStorage.setItem("fb_done",JSON.stringify([...s]));localStorage.setItem("fb_undone",JSON.stringify([...u]))}catch(e){}}
 async function loadFeedback(){
-  if(fbLoading) return; fbLoading=true; fbErr="";
-  try{ fbList=await SYNC.feedback(); }catch(e){ fbErr=e.code?e.message:"بازخوردها از سرور گرفته نشد. اینترنت را چک کن."; }
+  if(fbLoading) return; fbLoading=true; fbErr=""; render();
+  try{ fbList=await SYNC.feedback(); fbAt=Date.now(); }catch(e){ fbErr=e.code?e.message:"بازخوردها از سرور گرفته نشد. اینترنت را چک کن."; }
   fbLoading=false; render();
 }
 function feedbackTab(){
@@ -525,19 +529,24 @@ function feedbackTab(){
   const TABN={schedule:"برنامه",avail:"حضورها",rules:"قوانین",staff:"کارکنان",report:"گزارش",patients:"بیماران",appts:"نوبت‌ها",inventory:"انبار",insurance:"بیمه",implant:"ایمپلنت",feedback:"نظرها"};
   const KN={availability:"حضور",inventory_use:"مصرف انبار",patient:"پروندهٔ بیمار",note:"یادداشت بیمار",request:"درخواست",rules:"قوانین",weekly:"برنامهٔ هفتگی"};
   const who_=r=>r==="manager"?"مدیر مجموعه":r?nm(r):"—";
-  const list=(fbList||[]).filter(e=>fbType==="all"||e.type===fbType);
+  const all_=(fbList||[]).filter(e=>fbType==="all"||e.type===fbType);
+  const list=all_.filter(e=>!fbIsDone(e)), doneList=all_.filter(fbIsDone);
   const devs=[...new Set((fbList||[]).map(e=>e.device))];
   let h=`<div class="panel row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
     <span class="row" style="gap:6px;flex-wrap:wrap">${[["all","همه"],...Object.entries(TN)].map(([k,n])=>`<button class="btn ${fbType===k?"primary":"quiet"}" data-fbtype="${k}">${n} (${fa(k==="all"?(fbList||[]).length:(fbList||[]).filter(e=>e.type===k).length)})</button>`).join("")}</span>
-    <button class="btn" data-act="fb-reload">${fbLoading?"در حال گرفتن…":"تازه‌سازی"}</button></div>`;
+    <span class="row" style="gap:8px">${fbAt?`<span class="note">آخرین تازه‌سازی ${new Date(fbAt).toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</span>`:""}<button class="btn" data-act="fb-reload" ${fbLoading?"disabled":""}>${fbLoading?"در حال گرفتن…":"تازه‌سازی"}</button></span></div>`;
   if(fbErr) h+=`<p class="warn">${esc(fbErr)}</p>`;
-  h+=`<div class="panel">`+(list.map(e=>{
+  const item=(e,isDone)=>{
     const txt=e.type==="feedback"?esc(e.text||""):e.type==="error"?esc(e.msg||"")+` <span class="note">${esc(e.src||"")}:${e.line||""}</span>`:`«${esc(e.text||"")}»`+(e.type==="nlu_miss"?`<div class="note">${esc([...(e.misses||[]),...(e.rejected||[]),...(e.unclear||[])].join(" | "))}</div>`:"");
     return `<div style="border-top:1px solid var(--line);padding:8px 0">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><strong>${TN[e.type]||e.type}${KN[e.kind]?` · ${KN[e.kind]}`:""}</strong><span class="note">${new Date(e.at).toLocaleString("fa-IR")}</span></div>
       <div style="margin:4px 0">${txt}</div>
+      ${e.resolution?`<div class="okline" style="margin:4px 0">✔ ${esc(e.resolution)}</div>`:""}
       <div class="note">${esc(who_(e.role))} · صفحهٔ ${esc(TABN[e.tab]||e.tab||"—")} · گوشی ${fa(devs.indexOf(e.device)+1)} · نسخهٔ ${esc(e.v||"")}${e.standalone?" · اپ نصب‌شده":" · مرورگر"}</div>
-    </div>`;}).join("")||`<p class="note">هنوز نظری نیامده.</p>`)+`</div>`;
+      <div style="margin-top:4px"><button class="btn quiet" data-fbdone="${esc(e.id)}" data-on="${isDone?0:1}">${isDone?"برگرداندن به فهرست":"دیده شد"}</button></div>
+    </div>`;};
+  h+=`<div class="panel">`+(list.map(e=>item(e,false)).join("")||`<p class="note">${doneList.length?"همهٔ نظرها دیده شده‌اند.":"هنوز نظری نیامده."}</p>`)+`</div>`;
+  if(doneList.length) h+=`<div class="panel"><button class="btn quiet" data-act="fb-done-toggle" aria-expanded="${fbShowDone}">${fbShowDone?"بستن":"نمایش"} دیده‌شده‌ها (${fa(doneList.length)})</button>${fbShowDone?doneList.map(e=>item(e,true)).join(""):""}</div>`;
   return h;
 }
 
@@ -1630,7 +1639,10 @@ function patientsPanel(id){
   const mine=Object.entries(patients).filter(([,p])=>p.doctor===id).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let h=`<div class="panel"><strong>بیماران من</strong>`;
   if(!mine.length) h+=`<p class="note" style="margin:6px 0 0">هنوز بیماری ثبت نشده.</p>`;
-  else h+=`<div class="row" style="flex-wrap:wrap;margin-top:8px">${mine.map(([pid,p])=>`<button class="btn quiet" data-pat="${pid}">${esc(p.name)}</button>`).join("")}</div>`;
+  else{
+    h+=`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-list-toggle" aria-expanded="${patListOpen}">${patListOpen?"بستن فهرست بیماران":"نمایش بیماران من ("+fa(mine.length)+")"}</button></p>`;
+    if(patListOpen) h+=`<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${mine.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
   h+=`<div style="margin-top:10px">
     <label class="note" for="newPatName">بیمار جدید</label>
     <input type="text" id="newPatName" placeholder="اسم بیمار" value="${esc(patDraft.name||"")}">
@@ -1650,6 +1662,7 @@ function patientIntakePanel(id){
     <input type="text" id="intakeName" placeholder="اسم بیمار" value="${esc(patDraft.iName||"")}">
     <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
       <div style="flex:1 1 70px"><label class="note" for="intakeAge">سن</label><input type="number" id="intakeAge" min="0" max="120" value="${esc(patDraft.iAge)}"></div>
+      <div style="flex:1 1 130px"><label class="note" for="intakeFather">نام پدر</label><input type="text" id="intakeFather" value="${esc(patDraft.iFather||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="intakeNid">شماره ملی</label><input type="text" id="intakeNid" maxlength="10" inputmode="numeric" value="${esc(patDraft.iNid||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="intakePhone">شماره تلفن</label><input type="tel" id="intakePhone" value="${esc(patDraft.iPhone||"")}"></div>
     </div>
@@ -1687,6 +1700,7 @@ function patientPdfHtml(p){
       <div style="font-size:20px;font-weight:800">${esc(p.name)}</div>
       <div style="font-size:13px;color:#333;margin-top:6px">${esc(nm(p.doctor))}</div>
       <div style="font-size:12px;color:#555;margin-top:4px">سن: ${p.age?fa(p.age):"—"}</div>
+      <div style="font-size:12px;color:#555;margin-top:2px">نام پدر: ${esc(p.fatherName||"—")}</div>
       <div style="font-size:12px;color:#555;margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
       <div style="font-size:12px;color:#555;margin-top:2px">شماره ملی: ${esc(p.nationalId||"—")}</div>
     </div>
@@ -1774,6 +1788,7 @@ function renderPatientSheet(){
   const showEdit=!isMgr||patDraft.editingInfo;
   const info=showEdit?`<div class="row" style="flex-wrap:wrap;gap:10px;margin:8px 0">
       <div style="flex:1 1 70px"><label class="note" for="patAge">سن</label><input type="number" id="patAge" min="0" max="120" value="${p.age??""}"></div>
+      <div style="flex:1 1 130px"><label class="note" for="patFather">نام پدر</label><input type="text" id="patFather" value="${esc(p.fatherName||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="patNid">شماره ملی</label><input type="text" id="patNid" maxlength="10" inputmode="numeric" value="${esc(p.nationalId||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="patPhone">شماره تلفن</label><input type="tel" id="patPhone" value="${esc(p.phone||"")}"></div>
     </div>
@@ -1789,6 +1804,7 @@ function renderPatientSheet(){
     ${p.allergies?`<p class="warn" style="margin-top:6px"><strong>⚠ آلرژی: </strong>${esc(p.allergies)}</p>`:""}`
     :`<div style="margin:8px 0;font-size:.92rem">
       <div>سن: ${p.age?fa(p.age):"—"}</div>
+      <div style="margin-top:2px">نام پدر: ${esc(p.fatherName||"—")}</div>
       <div style="margin-top:2px">شماره ملی: ${esc(p.nationalId||"—")}</div>
       <div style="margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
       <div style="margin-top:4px"><strong>بیماری‌های زمینه‌ای: </strong>${esc(p.conditions||"—")}</div>
@@ -1869,11 +1885,11 @@ async function patOpgDel(id){
 }
 async function patInfoSave(){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
-  const age=($("#patAge")?.value||"").trim(), nid=($("#patNid")?.value||"").trim(), phone=($("#patPhone")?.value||"").trim();
+  const age=($("#patAge")?.value||"").trim(), nid=($("#patNid")?.value||"").trim(), phone=($("#patPhone")?.value||"").trim(), father=($("#patFather")?.value||"").trim();
   const cond=($("#patCond")?.value||"").trim(), meds=($("#patMeds")?.value||"").trim(), allergy=($("#patAllergy")?.value||"").trim();
   const insName=($("#patIns")?.value||"").trim(), insNum=($("#patInsNum")?.value||"").trim(), insCap=($("#patInsCap")?.value||"").trim();
   p.age=age?Math.max(0,Math.min(120,Math.floor(+age))):null;
-  p.nationalId=nid||null; p.phone=phone||null;
+  p.nationalId=nid||null; p.phone=phone||null; p.fatherName=father||null;
   p.conditions=cond||null; p.medications=meds||null; p.allergies=allergy||null;
   p.insurance={name:insName||null,number:insNum||null,cap:insCap?Math.max(0,Math.floor(+insCap)):null};
   await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
@@ -2012,16 +2028,16 @@ async function patIntakeRun(){
   if(!docId){patErr="یک دکتر انتخاب کن.";return render()}
   patBusy=true; patErr=""; patMsg=""; render();
   try{
-    const age=($("#intakeAge")?.value||"").trim(), nid=($("#intakeNid")?.value||"").trim(), phone=($("#intakePhone")?.value||"").trim();
+    const age=($("#intakeAge")?.value||"").trim(), nid=($("#intakeNid")?.value||"").trim(), phone=($("#intakePhone")?.value||"").trim(), father=($("#intakeFather")?.value||"").trim();
     const pid=uid();
     await db.doc("patients/"+pid).set({
       id:pid, doctor:docId, name,
       age: age?Math.max(0,Math.min(120,Math.floor(+age))):null,
-      nationalId: nid||null, phone: phone||null,
+      nationalId: nid||null, phone: phone||null, fatherName: father||null,
       insurance: { name: ($("#intakeIns")?.value||"").trim()||null, number: ($("#intakeInsNum")?.value||"").trim()||null, cap: ($("#intakeInsCap")?.value||"").trim()?Math.max(0,Math.floor(+$("#intakeInsCap")?.value)):null },
       createdAt:Date.now(), plan:[]
     });
-    patDraft.iName=""; patDraft.iAge=""; patDraft.iNid=""; patDraft.iPhone=""; patDraft.iDoc=docId; patDraft.iIns=""; patDraft.iInsNum=""; patDraft.iInsCap="";
+    patDraft.iName=""; patDraft.iAge=""; patDraft.iNid=""; patDraft.iPhone=""; patDraft.iFather=""; patDraft.iDoc=docId; patDraft.iIns=""; patDraft.iInsNum=""; patDraft.iInsCap="";
     patMsg=`بیمار «${esc(name)}» برای ${esc(nm(docId))} ثبت شد.`;
   }catch(e){patErr=errCopy(e)}
   patBusy=false; render();
@@ -2227,6 +2243,7 @@ async function apptDelete(id){ await db.doc("appointments/"+id).delete(); }
 /* ---------- events ---------- */
 function bind(){
   document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;FB.act("tab:"+tab);if(tab==="feedback"){fbList=null;fbErr=""}render();scrollTo(0,0)});
+  document.querySelectorAll("[data-fbdone]").forEach(b=>b.onclick=()=>{fbSetDone(b.dataset.fbdone,b.dataset.on==="1");render()});
   document.querySelectorAll("[data-fbtype]").forEach(b=>b.onclick=()=>{fbType=b.dataset.fbtype;render()});
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
@@ -2250,6 +2267,7 @@ function bind(){
   const ian=$("#intakeName"); if(ian) ian.oninput=e=>patDraft.iName=e.target.value;
   const iaa=$("#intakeAge"); if(iaa) iaa.oninput=e=>patDraft.iAge=e.target.value;
   const ian2=$("#intakeNid"); if(ian2) ian2.oninput=e=>patDraft.iNid=e.target.value;
+  const iaf=$("#intakeFather"); if(iaf) iaf.oninput=e=>patDraft.iFather=e.target.value;
   const iap=$("#intakePhone"); if(iap) iap.oninput=e=>patDraft.iPhone=e.target.value;
   const iad=$("#intakeDoc"); if(iad) iad.onchange=e=>patDraft.iDoc=e.target.value;
   const iai=$("#intakeIns"); if(iai) iai.oninput=e=>patDraft.iIns=e.target.value;
@@ -2309,6 +2327,7 @@ async function act(a,btn){
   if(a==="xlsx") return downloadXlsx();
   if(a==="sync-open") return syncSheet();
   if(a==="fb-reload") return loadFeedback();
+  if(a==="fb-done-toggle"){fbShowDone=!fbShowDone;return render();}
   if(a==="seen"){try{localStorage.setItem("seen_"+who,String(Date.now()))}catch(e){};return render()}
   if(a==="mgr-parse") return mgrParseRun();
   if(a==="mgr-apply") return mgrApply();
@@ -2354,6 +2373,7 @@ async function act(a,btn){
     }
     return;
   }
+  if(a==="pat-list-toggle"){patListOpen=!patListOpen;return render();}
   if(a==="pat-new") return patNewRun();
   if(a==="pat-parse") return patNoteParseRun();
   if(a==="pat-apply") return patApplyRun();

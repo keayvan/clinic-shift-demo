@@ -95,6 +95,22 @@ function loadEvents() {
 }
 for (const e of loadEvents()) seen.add(e.id);
 
+/* خلاصهٔ کار انجام‌شده برای هر نظر (فقط با رمز admin نوشته می‌شود): { [eventId]: "یک جمله" } */
+const RESFILE = path.join(DATA, "resolutions.json");
+function loadRes() { try { return JSON.parse(fs.readFileSync(RESFILE, "utf8")); } catch (e) { return {}; } }
+async function postResolutions(req, res) {
+  const J = { "Content-Type": "application/json; charset=utf-8" };
+  let body;
+  try { body = JSON.parse(await readBody(req, 64 * 1024)); } catch (e) { return send(res, 400, JSON.stringify({ error: "bad json" }), J); }
+  const cur = loadRes(); let n = 0;
+  for (const [id, t] of Object.entries(body && typeof body === "object" ? body : {})) {
+    if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || typeof t !== "string") continue;
+    cur[id] = t.slice(0, 300); n++;
+  }
+  const tmp = RESFILE + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(cur)); fs.renameSync(tmp, RESFILE);
+  send(res, 200, JSON.stringify({ ok: true, stored: n }), J);
+}
+
 async function postFeedback(req, res) {
   if (limited(req)) return send(res, 429, JSON.stringify({ error: "rate" }), { "Content-Type": "application/json" });
   let body;
@@ -201,13 +217,15 @@ http.createServer(async (req, res) => {
       const J = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
       if (!CLINIC_PASSWORD) return send(res, 503, JSON.stringify({ error: "disabled" }), J);
       if (!clinicAuthed(req)) return send(res, limited(req) ? 429 : 401, JSON.stringify({ error: "auth" }), J);
-      return send(res, 200, JSON.stringify(loadEvents().filter(e => e.type !== "nlu_ok").slice(-500).reverse()), J);
+      const R = loadRes();
+      return send(res, 200, JSON.stringify(loadEvents().filter(e => e.type !== "nlu_ok").slice(-500).reverse().map(e => R[e.id] ? { ...e, resolution: R[e.id] } : e)), J);
     }
     if (url.pathname === "/api/db") return await dbApi(req, res, url);
     if (url.pathname.startsWith("/admin")) {
       if (!ADMIN_PASSWORD) return send(res, 503, "Admin is disabled: set ADMIN_PASSWORD.", { "Content-Type": "text/plain; charset=utf-8" });
       if (!authed(req)) return send(res, 401, "auth required", { "WWW-Authenticate": 'Basic realm="dev", charset="UTF-8"', "Content-Type": "text/plain" });
       const h = { "Cache-Control": "no-store" };
+      if (url.pathname === "/admin/resolutions" && req.method === "POST") return await postResolutions(req, res);
       if (url.pathname === "/admin/export.json") return send(res, 200, JSON.stringify(loadEvents(), null, 1), { ...h, "Content-Type": "application/json; charset=utf-8", "Content-Disposition": 'attachment; filename="feedback.json"' });
       if (url.pathname === "/admin/export.csv") return send(res, 200, csv(loadEvents()), { ...h, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": 'attachment; filename="feedback.csv"' });
       return send(res, 200, adminPage(url.searchParams), { ...h, "Content-Type": "text/html; charset=utf-8" });
