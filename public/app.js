@@ -540,6 +540,7 @@ function feedbackTab(){
     return `<div style="border-top:1px solid var(--line);padding:8px 0">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><strong>${TN[e.type]||e.type}${KN[e.kind]?` · ${KN[e.kind]}`:""}</strong><span class="note">${new Date(e.at).toLocaleString("fa-IR")}</span></div>
       <div style="margin:4px 0">${txt}</div>
+      ${e.resolution?`<div class="okline" style="margin:4px 0">✔ ${esc(e.resolution)}</div>`:""}
       <div class="note">${esc(who_(e.role))} · صفحهٔ ${esc(TABN[e.tab]||e.tab||"—")} · گوشی ${fa(devs.indexOf(e.device)+1)} · نسخهٔ ${esc(e.v||"")}${e.standalone?" · اپ نصب‌شده":" · مرورگر"}</div>
       <div style="margin-top:4px"><button class="btn quiet" data-fbdone="${esc(e.id)}" data-on="${isDone?0:1}">${isDone?"برگرداندن به فهرست":"دیده شد"}</button></div>
     </div>`;};
