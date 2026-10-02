@@ -76,6 +76,7 @@
   add(["پایین", "فک پایین", "دندان‌های پایین", "دندانهای پایین"], { t: "ARCH", v: "lower" });
   add(["کردم", "کردیم", "انجام شد", "انجام دادم", "تمام شد", "انجامش دادم", "انجام گرفت", "تموم شد", "شد"], { t: "KW", v: "DONE" });
   add(["آلرژی", "حساسیت دارویی", "حساسیت"], { t: "KW", v: "ALLERGY" });
+  add(["نوبت", "نوبتش", "نوبت بعدی", "وقت بعدی"], { t: "KW", v: "APPT" });
   add(["درمان ریشه", "روت کانال"], { t: "TX", v: "root_canal", label: "عصب‌کشی" });
   add(["جرمگیری", "جرم‌گیری", "جرم گیری"], { t: "TX", v: "scaling", label: "جرمگیری" });
   add(["کشیدن دندان", "کشیدن", "خارج کردن دندان", "کشیده بشه", "کشیده شود"], { t: "TX", v: "extraction", label: "کشیدن دندان" });
@@ -456,7 +457,11 @@
       // "۴ پر شد" (no "دندان" word): if a treatment was recognized and a bare number
       // is sitting right there, treat it as the tooth number instead of dropping it.
       if (!tooth && txList.length) { const n = cl.find(x => x.t === "NUM"); if (n) tooth = String(n.v); }
-      if (!txList.length && !tooth && !arches.length) { if (meaningfulWords(cl).length) misses.push(raw); continue; }
+      if (!txList.length && !tooth && !arches.length) {
+        if (kw("APPT")) rejected.push(`نوبت از اینجا ثبت نمی‌شود: «${raw}». برای ثبت نوبت به تب «نوبت‌ها» بروید.`);
+        else if (meaningfulWords(cl).length) misses.push(raw);
+        continue;
+      }
       const arch = arches.length === 2 ? null : (arches[0] || null);
       const impliedDone = cl.some(x => x.t === "TX" && /شد$/.test(x.s || ""));
       const op = kw("REMOVE") ? "remove_plan" : "upsert_plan", status = (kw("DONE") || impliedDone) ? "done" : "pending";

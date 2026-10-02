@@ -85,5 +85,11 @@ eq("mgr: rules tab redirect", rules("دکتر نوری را سه‌شنبه صب
 eq("mgr: rules tab block", rules("زهرا این هفته سه شنبه نیست", staff, settings).actions, [{ op: "add_rule", rule: { type: "block", id: "a4", day: "tue", shift: null, temporary: true } }]);
 eq("mgr: miss", M("لطفا یه کاری بکن که همه راضی باشن").misses.length, 1);
 
+// patient note: booking request → guide to the appointments tab instead of "didn't understand"
+const pn = globalThis.NLU.patientNote("نوبت برای هفته بعد براش ثبت کن");
+eq("pat: appt request not a miss", pn.misses.length, 0);
+eq("pat: appt request guided", pn.rejected.length === 1 && pn.rejected[0].includes("نوبت‌ها"), true);
+eq("pat: appt + plan keeps plan", globalThis.NLU.patientNote("دندان ۱۴ عصب کشی کردم").actions.length, 1);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

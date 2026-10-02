@@ -2036,7 +2036,7 @@ async function patNoteParseRun(){
   const items=allActions.filter(a=>a.op==="upsert_plan"||a.op==="remove_plan");
   const allergyActions=allActions.filter(a=>a.op==="set_allergy");
   const invActions=Array.isArray(ri?.actions)?ri.actions:[];
-  if(!items.length&&!invActions.length&&!allergyActions.length){patDraft.noteErr="چیزی نفهمیدم. ساده‌تر بنویس (مثلاً «دندان ۱۴ عصب کشی کردم»).";return renderPatientSheet()}
+  if(!items.length&&!invActions.length&&!allergyActions.length){patDraft.noteErr=(Array.isArray(r?.rejected)&&r.rejected.length?r.rejected.join("؛ "):"چیزی نفهمیدم. ساده‌تر بنویس (مثلاً «دندان ۱۴ عصب کشی کردم»).");return renderPatientSheet()}
   patDraft.pending={items,invActions,allergyActions,rejected:[...(Array.isArray(r?.rejected)?r.rejected:[]),...(Array.isArray(ri?.rejected)?ri.rejected:[])]};
   renderPatientSheet();
 }
