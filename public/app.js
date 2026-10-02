@@ -514,7 +514,9 @@ function syncSheet(msg="",bad=false){
 /* ---------- feedback inbox (manager) ---------- */
 let fbList=null, fbErr="", fbLoading=false, fbType="all", fbAt=0, fbShowDone=false;
 const fbDoneIds=()=>{try{return new Set(JSON.parse(localStorage.getItem("fb_done")||"[]"))}catch(e){return new Set()}};
-function fbSetDone(id,on){const s=fbDoneIds();on?s.add(id):s.delete(id);try{localStorage.setItem("fb_done",JSON.stringify([...s]))}catch(e){}}
+const fbUndoneIds=()=>{try{return new Set(JSON.parse(localStorage.getItem("fb_undone")||"[]"))}catch(e){return new Set()}};
+const fbIsDone=e=>fbDoneIds().has(e.id)||(!!e.resolution&&!fbUndoneIds().has(e.id));
+function fbSetDone(id,on){const s=fbDoneIds(),u=fbUndoneIds();if(on){s.add(id);u.delete(id)}else{s.delete(id);u.add(id)}try{localStorage.setItem("fb_done",JSON.stringify([...s]));localStorage.setItem("fb_undone",JSON.stringify([...u]))}catch(e){}}
 async function loadFeedback(){
   if(fbLoading) return; fbLoading=true; fbErr=""; render();
   try{ fbList=await SYNC.feedback(); fbAt=Date.now(); }catch(e){ fbErr=e.code?e.message:"بازخوردها از سرور گرفته نشد. اینترنت را چک کن."; }
@@ -527,9 +529,8 @@ function feedbackTab(){
   const TABN={schedule:"برنامه",avail:"حضورها",rules:"قوانین",staff:"کارکنان",report:"گزارش",patients:"بیماران",appts:"نوبت‌ها",inventory:"انبار",insurance:"بیمه",implant:"ایمپلنت",feedback:"نظرها"};
   const KN={availability:"حضور",inventory_use:"مصرف انبار",patient:"پروندهٔ بیمار",note:"یادداشت بیمار",request:"درخواست",rules:"قوانین",weekly:"برنامهٔ هفتگی"};
   const who_=r=>r==="manager"?"مدیر مجموعه":r?nm(r):"—";
-  const done=fbDoneIds();
   const all_=(fbList||[]).filter(e=>fbType==="all"||e.type===fbType);
-  const list=all_.filter(e=>!done.has(e.id)), doneList=all_.filter(e=>done.has(e.id));
+  const list=all_.filter(e=>!fbIsDone(e)), doneList=all_.filter(fbIsDone);
   const devs=[...new Set((fbList||[]).map(e=>e.device))];
   let h=`<div class="panel row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
     <span class="row" style="gap:6px;flex-wrap:wrap">${[["all","همه"],...Object.entries(TN)].map(([k,n])=>`<button class="btn ${fbType===k?"primary":"quiet"}" data-fbtype="${k}">${n} (${fa(k==="all"?(fbList||[]).length:(fbList||[]).filter(e=>e.type===k).length)})</button>`).join("")}</span>
