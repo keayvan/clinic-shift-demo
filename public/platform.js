@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.8.1";
+const APP_VERSION = "2.9.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -118,6 +118,12 @@ const SYNC = (() => {
       }
       LDB.wipe(); for (const [p, d] of Object.entries(r.docs)) if (d) LDB.applyRemote(p, d);
       put("out", {}); put("seq", r.seq); return "downloaded";
+    },
+    async feedback() {
+      const r = await fetch("api/feedback", { headers: { "X-Clinic-Key": key() }, cache: "no-store" });
+      if (r.status === 401 || r.status === 429) throw Object.assign(new Error("رمز کلینیک درست نیست."), { code: "auth" });
+      if (!r.ok) throw new Error("server " + r.status);
+      return r.json();
     },
     disconnect() { put("key", null); put("out", null); put("seq", null); setState({ ok: null, err: "" }); }
   };
@@ -325,7 +331,7 @@ const Shell = (() => {
 
   function guide(first) {
     sheet(`<h2>دموی برنامه شیفت کلینیک <span class="note" style="font-weight:400;font-size:.7em">نسخه ${APP_VERSION}</span></h2>
-      <p class="lead">این نسخه آزمایشی است. همه اطلاعات فقط روی همین گوشی ذخیره می‌شود و به کسی ارسال نمی‌شود، جز نظرهایی که خودتان می‌فرستید و جمله‌هایی که برنامه نفهمیده.</p>
+      <p class="lead">این نسخه آزمایشی است. ${SYNC.enabled() ? "این گوشی به سرور کلینیک وصل است و اطلاعات بین گوشی‌های کلینیک مشترک است." : "تا وقتی مدیر این گوشی را به سرور کلینیک وصل نکرده، اطلاعات فقط روی همین گوشی است."} نظرهایی که می‌فرستید و جمله‌هایی که برنامه نفهمیده برای بهتر شدن برنامه به سرور فرستاده می‌شوند.</p>
       <p>از منوی «من:» بالای صفحه می‌توانید جای هر کدام از کارکنان باشید. پیشنهاد می‌کنیم این کارها را به ترتیب امتحان کنید:</p>
       <ol class="steps">
         <li><strong>ساخت برنامه:</strong> با «مدیر مجموعه»، در تب برنامه «ساخت برنامه» و بعد «تأیید و ارسال برای همه» را بزنید.</li>

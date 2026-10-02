@@ -1,5 +1,6 @@
 /* Zero-dependency server for the clinic shift demo.
    - serves the PWA from ./public
+   - GET  /api/feedback     latest feedback for the manager's in-app tab (X-Clinic-Key)
    - POST /api/feedback     stores feedback/log events (JSON lines) in DATA_DIR/feedback.jsonl
    - GET  /admin            developer dashboard (HTTP Basic auth, password from ADMIN_PASSWORD)
    - GET  /admin/export.json | /admin/export.csv
@@ -196,6 +197,12 @@ http.createServer(async (req, res) => {
   try {
     if (url.pathname === "/healthz") return send(res, 200, "ok", { "Content-Type": "text/plain" });
     if (url.pathname === "/api/feedback" && req.method === "POST") return await postFeedback(req, res);
+    if (url.pathname === "/api/feedback" && req.method === "GET") {
+      const J = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" };
+      if (!CLINIC_PASSWORD) return send(res, 503, JSON.stringify({ error: "disabled" }), J);
+      if (!clinicAuthed(req)) return send(res, limited(req) ? 429 : 401, JSON.stringify({ error: "auth" }), J);
+      return send(res, 200, JSON.stringify(loadEvents().filter(e => e.type !== "nlu_ok").slice(-500).reverse()), J);
+    }
     if (url.pathname === "/api/db") return await dbApi(req, res, url);
     if (url.pathname.startsWith("/admin")) {
       if (!ADMIN_PASSWORD) return send(res, 503, "Admin is disabled: set ADMIN_PASSWORD.", { "Content-Type": "text/plain; charset=utf-8" });

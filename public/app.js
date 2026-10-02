@@ -511,13 +511,43 @@ function syncSheet(msg="",bad=false){
   });
 }
 
+/* ---------- feedback inbox (manager) ---------- */
+let fbList=null, fbErr="", fbLoading=false, fbType="all";
+async function loadFeedback(){
+  if(fbLoading) return; fbLoading=true; fbErr="";
+  try{ fbList=await SYNC.feedback(); }catch(e){ fbErr=e.code?e.message:"بازخوردها از سرور گرفته نشد. اینترنت را چک کن."; }
+  fbLoading=false; render();
+}
+function feedbackTab(){
+  if(!SYNC.enabled()) return `<div class="panel"><p>نظرها روی سرور کلینیک ذخیره می‌شوند. اول این گوشی را به سرور وصل کن.</p><button class="btn" data-act="sync-open">اتصال به سرور کلینیک</button></div>`;
+  if(fbList===null&&!fbErr){ loadFeedback(); return `<div class="panel note">در حال گرفتن نظرها…</div>`; }
+  const TN={feedback:"نظر",nlu_miss:"جملهٔ نفهمیده",nlu_correction:"اصلاح برداشت",error:"خطا"};
+  const TABN={schedule:"برنامه",avail:"حضورها",rules:"قوانین",staff:"کارکنان",report:"گزارش",patients:"بیماران",appts:"نوبت‌ها",inventory:"انبار",insurance:"بیمه",implant:"ایمپلنت",feedback:"نظرها"};
+  const KN={availability:"حضور",inventory_use:"مصرف انبار",patient:"پروندهٔ بیمار",note:"یادداشت بیمار",request:"درخواست",rules:"قوانین",weekly:"برنامهٔ هفتگی"};
+  const who_=r=>r==="manager"?"مدیر مجموعه":r?nm(r):"—";
+  const list=(fbList||[]).filter(e=>fbType==="all"||e.type===fbType);
+  const devs=[...new Set((fbList||[]).map(e=>e.device))];
+  let h=`<div class="panel row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span class="row" style="gap:6px;flex-wrap:wrap">${[["all","همه"],...Object.entries(TN)].map(([k,n])=>`<button class="btn ${fbType===k?"primary":"quiet"}" data-fbtype="${k}">${n} (${fa(k==="all"?(fbList||[]).length:(fbList||[]).filter(e=>e.type===k).length)})</button>`).join("")}</span>
+    <button class="btn" data-act="fb-reload">${fbLoading?"در حال گرفتن…":"تازه‌سازی"}</button></div>`;
+  if(fbErr) h+=`<p class="warn">${esc(fbErr)}</p>`;
+  h+=`<div class="panel">`+(list.map(e=>{
+    const txt=e.type==="feedback"?esc(e.text||""):e.type==="error"?esc(e.msg||"")+` <span class="note">${esc(e.src||"")}:${e.line||""}</span>`:`«${esc(e.text||"")}»`+(e.type==="nlu_miss"?`<div class="note">${esc([...(e.misses||[]),...(e.rejected||[]),...(e.unclear||[])].join(" | "))}</div>`:"");
+    return `<div style="border-top:1px solid var(--line);padding:8px 0">
+      <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><strong>${TN[e.type]||e.type}${KN[e.kind]?` · ${KN[e.kind]}`:""}</strong><span class="note">${new Date(e.at).toLocaleString("fa-IR")}</span></div>
+      <div style="margin:4px 0">${txt}</div>
+      <div class="note">${esc(who_(e.role))} · صفحهٔ ${esc(TABN[e.tab]||e.tab||"—")} · گوشی ${fa(devs.indexOf(e.device)+1)} · نسخهٔ ${esc(e.v||"")}${e.standalone?" · اپ نصب‌شده":" · مرورگر"}</div>
+    </div>`;}).join("")||`<p class="note">هنوز نظری نیامده.</p>`)+`</div>`;
+  return h;
+}
+
 function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
-  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")]];
+  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["feedback","نظرها"],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")]];
   let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
-  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="implant"?IMP.tab(): staffTab();
+  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
 /* ---------- monthly report ---------- */
@@ -2196,7 +2226,8 @@ async function apptDelete(id){ await db.doc("appointments/"+id).delete(); }
 
 /* ---------- events ---------- */
 function bind(){
-  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;FB.act("tab:"+tab);render();scrollTo(0,0)});
+  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;FB.act("tab:"+tab);if(tab==="feedback"){fbList=null;fbErr=""}render();scrollTo(0,0)});
+  document.querySelectorAll("[data-fbtype]").forEach(b=>b.onclick=()=>{fbType=b.dataset.fbtype;render()});
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
@@ -2277,6 +2308,7 @@ async function act(a,btn){
   if(a==="pdf") return downloadPdf(btn);
   if(a==="xlsx") return downloadXlsx();
   if(a==="sync-open") return syncSheet();
+  if(a==="fb-reload") return loadFeedback();
   if(a==="seen"){try{localStorage.setItem("seen_"+who,String(Date.now()))}catch(e){};return render()}
   if(a==="mgr-parse") return mgrParseRun();
   if(a==="mgr-apply") return mgrApply();
