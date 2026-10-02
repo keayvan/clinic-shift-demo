@@ -512,10 +512,12 @@ function syncSheet(msg="",bad=false){
 }
 
 /* ---------- feedback inbox (manager) ---------- */
-let fbList=null, fbErr="", fbLoading=false, fbType="all";
+let fbList=null, fbErr="", fbLoading=false, fbType="all", fbAt=0, fbShowDone=false;
+const fbDoneIds=()=>{try{return new Set(JSON.parse(localStorage.getItem("fb_done")||"[]"))}catch(e){return new Set()}};
+function fbSetDone(id,on){const s=fbDoneIds();on?s.add(id):s.delete(id);try{localStorage.setItem("fb_done",JSON.stringify([...s]))}catch(e){}}
 async function loadFeedback(){
-  if(fbLoading) return; fbLoading=true; fbErr="";
-  try{ fbList=await SYNC.feedback(); }catch(e){ fbErr=e.code?e.message:"بازخوردها از سرور گرفته نشد. اینترنت را چک کن."; }
+  if(fbLoading) return; fbLoading=true; fbErr=""; render();
+  try{ fbList=await SYNC.feedback(); fbAt=Date.now(); }catch(e){ fbErr=e.code?e.message:"بازخوردها از سرور گرفته نشد. اینترنت را چک کن."; }
   fbLoading=false; render();
 }
 function feedbackTab(){
@@ -525,19 +527,24 @@ function feedbackTab(){
   const TABN={schedule:"برنامه",avail:"حضورها",rules:"قوانین",staff:"کارکنان",report:"گزارش",patients:"بیماران",appts:"نوبت‌ها",inventory:"انبار",insurance:"بیمه",implant:"ایمپلنت",feedback:"نظرها"};
   const KN={availability:"حضور",inventory_use:"مصرف انبار",patient:"پروندهٔ بیمار",note:"یادداشت بیمار",request:"درخواست",rules:"قوانین",weekly:"برنامهٔ هفتگی"};
   const who_=r=>r==="manager"?"مدیر مجموعه":r?nm(r):"—";
-  const list=(fbList||[]).filter(e=>fbType==="all"||e.type===fbType);
+  const done=fbDoneIds();
+  const all_=(fbList||[]).filter(e=>fbType==="all"||e.type===fbType);
+  const list=all_.filter(e=>!done.has(e.id)), doneList=all_.filter(e=>done.has(e.id));
   const devs=[...new Set((fbList||[]).map(e=>e.device))];
   let h=`<div class="panel row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
     <span class="row" style="gap:6px;flex-wrap:wrap">${[["all","همه"],...Object.entries(TN)].map(([k,n])=>`<button class="btn ${fbType===k?"primary":"quiet"}" data-fbtype="${k}">${n} (${fa(k==="all"?(fbList||[]).length:(fbList||[]).filter(e=>e.type===k).length)})</button>`).join("")}</span>
-    <button class="btn" data-act="fb-reload">${fbLoading?"در حال گرفتن…":"تازه‌سازی"}</button></div>`;
+    <span class="row" style="gap:8px">${fbAt?`<span class="note">آخرین تازه‌سازی ${new Date(fbAt).toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</span>`:""}<button class="btn" data-act="fb-reload" ${fbLoading?"disabled":""}>${fbLoading?"در حال گرفتن…":"تازه‌سازی"}</button></span></div>`;
   if(fbErr) h+=`<p class="warn">${esc(fbErr)}</p>`;
-  h+=`<div class="panel">`+(list.map(e=>{
+  const item=(e,isDone)=>{
     const txt=e.type==="feedback"?esc(e.text||""):e.type==="error"?esc(e.msg||"")+` <span class="note">${esc(e.src||"")}:${e.line||""}</span>`:`«${esc(e.text||"")}»`+(e.type==="nlu_miss"?`<div class="note">${esc([...(e.misses||[]),...(e.rejected||[]),...(e.unclear||[])].join(" | "))}</div>`:"");
     return `<div style="border-top:1px solid var(--line);padding:8px 0">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><strong>${TN[e.type]||e.type}${KN[e.kind]?` · ${KN[e.kind]}`:""}</strong><span class="note">${new Date(e.at).toLocaleString("fa-IR")}</span></div>
       <div style="margin:4px 0">${txt}</div>
       <div class="note">${esc(who_(e.role))} · صفحهٔ ${esc(TABN[e.tab]||e.tab||"—")} · گوشی ${fa(devs.indexOf(e.device)+1)} · نسخهٔ ${esc(e.v||"")}${e.standalone?" · اپ نصب‌شده":" · مرورگر"}</div>
-    </div>`;}).join("")||`<p class="note">هنوز نظری نیامده.</p>`)+`</div>`;
+      <div style="margin-top:4px"><button class="btn quiet" data-fbdone="${esc(e.id)}" data-on="${isDone?0:1}">${isDone?"برگرداندن به فهرست":"دیده شد"}</button></div>
+    </div>`;};
+  h+=`<div class="panel">`+(list.map(e=>item(e,false)).join("")||`<p class="note">${doneList.length?"همهٔ نظرها دیده شده‌اند.":"هنوز نظری نیامده."}</p>`)+`</div>`;
+  if(doneList.length) h+=`<div class="panel"><button class="btn quiet" data-act="fb-done-toggle" aria-expanded="${fbShowDone}">${fbShowDone?"بستن":"نمایش"} دیده‌شده‌ها (${fa(doneList.length)})</button>${fbShowDone?doneList.map(e=>item(e,true)).join(""):""}</div>`;
   return h;
 }
 
@@ -2234,6 +2241,7 @@ async function apptDelete(id){ await db.doc("appointments/"+id).delete(); }
 /* ---------- events ---------- */
 function bind(){
   document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>{tab=b.dataset.tab;FB.act("tab:"+tab);if(tab==="feedback"){fbList=null;fbErr=""}render();scrollTo(0,0)});
+  document.querySelectorAll("[data-fbdone]").forEach(b=>b.onclick=()=>{fbSetDone(b.dataset.fbdone,b.dataset.on==="1");render()});
   document.querySelectorAll("[data-fbtype]").forEach(b=>b.onclick=()=>{fbType=b.dataset.fbtype;render()});
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
@@ -2317,6 +2325,7 @@ async function act(a,btn){
   if(a==="xlsx") return downloadXlsx();
   if(a==="sync-open") return syncSheet();
   if(a==="fb-reload") return loadFeedback();
+  if(a==="fb-done-toggle"){fbShowDone=!fbShowDone;return render();}
   if(a==="seen"){try{localStorage.setItem("seen_"+who,String(Date.now()))}catch(e){};return render()}
   if(a==="mgr-parse") return mgrParseRun();
   if(a==="mgr-apply") return mgrApply();
