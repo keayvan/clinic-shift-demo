@@ -545,7 +545,7 @@ function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
-  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["feedback","نظرها"],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")]];
+  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
   let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
   h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;

@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.9.0";
+const APP_VERSION = "2.9.1";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -123,6 +123,7 @@ const SYNC = (() => {
       const r = await fetch("api/feedback", { headers: { "X-Clinic-Key": key() }, cache: "no-store" });
       if (r.status === 401 || r.status === 429) throw Object.assign(new Error("رمز کلینیک درست نیست."), { code: "auth" });
       if (!r.ok) throw new Error("server " + r.status);
+      if (!(r.headers.get("content-type") || "").includes("json")) throw Object.assign(new Error("سرور هنوز نسخهٔ قبلی را اجرا می‌کند و باید یک بار ری‌استارت شود."), { code: "old" });
       return r.json();
     },
     disconnect() { put("key", null); put("out", null); put("seq", null); setState({ ok: null, err: "" }); }
