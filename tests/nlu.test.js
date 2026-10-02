@@ -66,6 +66,8 @@ eq("mgr: pairing add", M("سپیده دستیار دکتر کریمی و دکت�
 eq("mgr: pairing only", M("دکتر احمدی فقط با نگار کار می‌کند").actions, [{ op: "set_pairing", doctor: "d1", assistants: ["a3"] }]);
 eq("mgr: pairing remove", M("لیلا را از دستیارهای دکتر نوری حذف کن").actions, [{ op: "remove_from_pairing", doctor: "d6", assistant: "a8" }]);
 eq("mgr: spec req day", M("هر روز حداقل یک ارتودنتیست باشد").actions, [{ op: "add_rule", rule: { type: "require_specialty", specialty: "ارتودنسی", per: "day", day: null, shift: null, n: 1 } }]);
+eq("mgr: unknown doctor name", M("دکتر شروان شرافتی شنبه ها فول تایم کار میکنه").rejected, ["در «دکتر شروان شرافتی شنبه فول تایم کار میکنه» اسم دکتر در فهرست کارکنان پیدا نشد. اول از تب «کارکنان» اضافه‌اش کنید، بعد دوباره بنویسید."]);
+eq("mgr: unknown doctor no actions", M("دکتر شروان شرافتی شنبه ها فول تایم کار میکنه").actions, []);
 eq("mgr: spec req shift", M("هر شیفت یک دکتر عمومی لازم است").actions[0].rule.per, "shift");
 eq("mgr: set spec", M("تخصص دکتر کریمی ارتودنسی است").actions, [{ op: "set_specialty", id: "d3", specialty: "ارتودنسی" }]);
 eq("mgr: ask count total", M("امروز چند نفر تو مجموعه حضور دارن").actions, [{ op: "ask_count", role: null, day: null }]);

@@ -399,6 +399,7 @@
         const isToday = cl.some(x => x.t === "THISWEEK" && x.v === "today");
         if (askDay || isToday) { actions.push({ op: "ask_count", role: roleWord || null, day: askDay }); continue; }
       }
+      if (!all.length && roleWord === "doctor" && day && has(cl, "SHIFT") && !kw("NEW")) { rejected.push(`در «${raw}» اسم دکتر در فهرست کارکنان پیدا نشد. اول از تب «کارکنان» اضافه‌اش کنید، بعد دوباره بنویسید.`); continue; }
       misses.push(raw);
     }
     for (const m of misses) rejected.push(`این جمله را نفهمیدم: «${m}». از فرم‌ها استفاده کنید یا ساده‌تر بنویسید.`);
