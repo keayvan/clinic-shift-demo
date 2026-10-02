@@ -50,7 +50,7 @@ function todayJalali(){ const d=new Date(); return gregorianToJalali(d.getFullYe
 
 let db=null, sample=true, downloads=true;
 let cfg=null, avail={}, sched=null, archive={}, patients={}, inventory={}, appts={}, loaded={cfg:false,avail:false,sched:false};
-let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="";
+let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=false;
 let invDraft={name:"",unit:"",qty:"",minQty:""}, invErr="";
 let apptDraft={name:"",doctor:"",jy:null,jm:null,jd:null,time:"",note:""}, apptErr="", apptMsg="";
 let patSearch="";
@@ -1630,7 +1630,10 @@ function patientsPanel(id){
   const mine=Object.entries(patients).filter(([,p])=>p.doctor===id).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let h=`<div class="panel"><strong>بیماران من</strong>`;
   if(!mine.length) h+=`<p class="note" style="margin:6px 0 0">هنوز بیماری ثبت نشده.</p>`;
-  else h+=`<div class="row" style="flex-wrap:wrap;margin-top:8px">${mine.map(([pid,p])=>`<button class="btn quiet" data-pat="${pid}">${esc(p.name)}</button>`).join("")}</div>`;
+  else{
+    h+=`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-list-toggle" aria-expanded="${patListOpen}">${patListOpen?"بستن فهرست بیماران":"نمایش بیماران من ("+fa(mine.length)+")"}</button></p>`;
+    if(patListOpen) h+=`<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${mine.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
   h+=`<div style="margin-top:10px">
     <label class="note" for="newPatName">بیمار جدید</label>
     <input type="text" id="newPatName" placeholder="اسم بیمار" value="${esc(patDraft.name||"")}">
@@ -2359,6 +2362,7 @@ async function act(a,btn){
     }
     return;
   }
+  if(a==="pat-list-toggle"){patListOpen=!patListOpen;return render();}
   if(a==="pat-new") return patNewRun();
   if(a==="pat-parse") return patNoteParseRun();
   if(a==="pat-apply") return patApplyRun();
