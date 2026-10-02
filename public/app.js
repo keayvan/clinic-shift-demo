@@ -1650,6 +1650,7 @@ function patientIntakePanel(id){
     <input type="text" id="intakeName" placeholder="اسم بیمار" value="${esc(patDraft.iName||"")}">
     <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
       <div style="flex:1 1 70px"><label class="note" for="intakeAge">سن</label><input type="number" id="intakeAge" min="0" max="120" value="${esc(patDraft.iAge)}"></div>
+      <div style="flex:1 1 130px"><label class="note" for="intakeFather">نام پدر</label><input type="text" id="intakeFather" value="${esc(patDraft.iFather||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="intakeNid">شماره ملی</label><input type="text" id="intakeNid" maxlength="10" inputmode="numeric" value="${esc(patDraft.iNid||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="intakePhone">شماره تلفن</label><input type="tel" id="intakePhone" value="${esc(patDraft.iPhone||"")}"></div>
     </div>
@@ -1687,6 +1688,7 @@ function patientPdfHtml(p){
       <div style="font-size:20px;font-weight:800">${esc(p.name)}</div>
       <div style="font-size:13px;color:#333;margin-top:6px">${esc(nm(p.doctor))}</div>
       <div style="font-size:12px;color:#555;margin-top:4px">سن: ${p.age?fa(p.age):"—"}</div>
+      <div style="font-size:12px;color:#555;margin-top:2px">نام پدر: ${esc(p.fatherName||"—")}</div>
       <div style="font-size:12px;color:#555;margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
       <div style="font-size:12px;color:#555;margin-top:2px">شماره ملی: ${esc(p.nationalId||"—")}</div>
     </div>
@@ -1774,6 +1776,7 @@ function renderPatientSheet(){
   const showEdit=!isMgr||patDraft.editingInfo;
   const info=showEdit?`<div class="row" style="flex-wrap:wrap;gap:10px;margin:8px 0">
       <div style="flex:1 1 70px"><label class="note" for="patAge">سن</label><input type="number" id="patAge" min="0" max="120" value="${p.age??""}"></div>
+      <div style="flex:1 1 130px"><label class="note" for="patFather">نام پدر</label><input type="text" id="patFather" value="${esc(p.fatherName||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="patNid">شماره ملی</label><input type="text" id="patNid" maxlength="10" inputmode="numeric" value="${esc(p.nationalId||"")}"></div>
       <div style="flex:1 1 130px"><label class="note" for="patPhone">شماره تلفن</label><input type="tel" id="patPhone" value="${esc(p.phone||"")}"></div>
     </div>
@@ -1789,6 +1792,7 @@ function renderPatientSheet(){
     ${p.allergies?`<p class="warn" style="margin-top:6px"><strong>⚠ آلرژی: </strong>${esc(p.allergies)}</p>`:""}`
     :`<div style="margin:8px 0;font-size:.92rem">
       <div>سن: ${p.age?fa(p.age):"—"}</div>
+      <div style="margin-top:2px">نام پدر: ${esc(p.fatherName||"—")}</div>
       <div style="margin-top:2px">شماره ملی: ${esc(p.nationalId||"—")}</div>
       <div style="margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
       <div style="margin-top:4px"><strong>بیماری‌های زمینه‌ای: </strong>${esc(p.conditions||"—")}</div>
@@ -1869,11 +1873,11 @@ async function patOpgDel(id){
 }
 async function patInfoSave(){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
-  const age=($("#patAge")?.value||"").trim(), nid=($("#patNid")?.value||"").trim(), phone=($("#patPhone")?.value||"").trim();
+  const age=($("#patAge")?.value||"").trim(), nid=($("#patNid")?.value||"").trim(), phone=($("#patPhone")?.value||"").trim(), father=($("#patFather")?.value||"").trim();
   const cond=($("#patCond")?.value||"").trim(), meds=($("#patMeds")?.value||"").trim(), allergy=($("#patAllergy")?.value||"").trim();
   const insName=($("#patIns")?.value||"").trim(), insNum=($("#patInsNum")?.value||"").trim(), insCap=($("#patInsCap")?.value||"").trim();
   p.age=age?Math.max(0,Math.min(120,Math.floor(+age))):null;
-  p.nationalId=nid||null; p.phone=phone||null;
+  p.nationalId=nid||null; p.phone=phone||null; p.fatherName=father||null;
   p.conditions=cond||null; p.medications=meds||null; p.allergies=allergy||null;
   p.insurance={name:insName||null,number:insNum||null,cap:insCap?Math.max(0,Math.floor(+insCap)):null};
   await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
@@ -2012,16 +2016,16 @@ async function patIntakeRun(){
   if(!docId){patErr="یک دکتر انتخاب کن.";return render()}
   patBusy=true; patErr=""; patMsg=""; render();
   try{
-    const age=($("#intakeAge")?.value||"").trim(), nid=($("#intakeNid")?.value||"").trim(), phone=($("#intakePhone")?.value||"").trim();
+    const age=($("#intakeAge")?.value||"").trim(), nid=($("#intakeNid")?.value||"").trim(), phone=($("#intakePhone")?.value||"").trim(), father=($("#intakeFather")?.value||"").trim();
     const pid=uid();
     await db.doc("patients/"+pid).set({
       id:pid, doctor:docId, name,
       age: age?Math.max(0,Math.min(120,Math.floor(+age))):null,
-      nationalId: nid||null, phone: phone||null,
+      nationalId: nid||null, phone: phone||null, fatherName: father||null,
       insurance: { name: ($("#intakeIns")?.value||"").trim()||null, number: ($("#intakeInsNum")?.value||"").trim()||null, cap: ($("#intakeInsCap")?.value||"").trim()?Math.max(0,Math.floor(+$("#intakeInsCap")?.value)):null },
       createdAt:Date.now(), plan:[]
     });
-    patDraft.iName=""; patDraft.iAge=""; patDraft.iNid=""; patDraft.iPhone=""; patDraft.iDoc=docId; patDraft.iIns=""; patDraft.iInsNum=""; patDraft.iInsCap="";
+    patDraft.iName=""; patDraft.iAge=""; patDraft.iNid=""; patDraft.iPhone=""; patDraft.iFather=""; patDraft.iDoc=docId; patDraft.iIns=""; patDraft.iInsNum=""; patDraft.iInsCap="";
     patMsg=`بیمار «${esc(name)}» برای ${esc(nm(docId))} ثبت شد.`;
   }catch(e){patErr=errCopy(e)}
   patBusy=false; render();
@@ -2250,6 +2254,7 @@ function bind(){
   const ian=$("#intakeName"); if(ian) ian.oninput=e=>patDraft.iName=e.target.value;
   const iaa=$("#intakeAge"); if(iaa) iaa.oninput=e=>patDraft.iAge=e.target.value;
   const ian2=$("#intakeNid"); if(ian2) ian2.oninput=e=>patDraft.iNid=e.target.value;
+  const iaf=$("#intakeFather"); if(iaf) iaf.oninput=e=>patDraft.iFather=e.target.value;
   const iap=$("#intakePhone"); if(iap) iap.oninput=e=>patDraft.iPhone=e.target.value;
   const iad=$("#intakeDoc"); if(iad) iad.onchange=e=>patDraft.iDoc=e.target.value;
   const iai=$("#intakeIns"); if(iai) iai.oninput=e=>patDraft.iIns=e.target.value;
