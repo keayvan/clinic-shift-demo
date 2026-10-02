@@ -1657,22 +1657,12 @@ function patientIntakePanel(id){
   if(byId(id)?.role!=="assistant") return "";
   const docs=ofRole("doctor");
   if(!docs.length) return "";
-  let h=`<div class="panel"><strong>پذیرش بیمار جدید</strong><p class="note" style="margin:4px 0 8px">مشخصات کلی بیمار را وارد کن و دکترش را مشخص کن.</p>
+  let h=`<div class="panel"><strong>پذیرش بیمار جدید</strong><p class="note" style="margin:4px 0 8px">مشخصات بیمار را مثل فرم کاغذی وارد کن و دکترش را مشخص کن. فقط اسم و دکتر لازم است؛ بقیه اختیاری است.</p>
     <label class="note" for="intakeName">اسم بیمار</label>
     <input type="text" id="intakeName" placeholder="اسم بیمار" value="${esc(patDraft.iName||"")}">
-    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
-      <div style="flex:1 1 70px"><label class="note" for="intakeAge">سن</label><input type="number" id="intakeAge" min="0" max="120" value="${esc(patDraft.iAge)}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="intakeFather">نام پدر</label><input type="text" id="intakeFather" value="${esc(patDraft.iFather||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="intakeNid">شماره ملی</label><input type="text" id="intakeNid" maxlength="10" inputmode="numeric" value="${esc(patDraft.iNid||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="intakePhone">شماره تلفن</label><input type="tel" id="intakePhone" value="${esc(patDraft.iPhone||"")}"></div>
-    </div>
     <label class="note" for="intakeDoc" style="display:block;margin-top:8px">دکتر</label>
     <select id="intakeDoc">${docs.map(d=>`<option value="${d.id}" ${(patDraft.iDoc||docs[0].id)===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select>
-    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
-      <div style="flex:1 1 130px"><label class="note" for="intakeIns">نام بیمه</label><input type="text" id="intakeIns" placeholder="مثلاً: تامین‌اجتماعی" value="${esc(patDraft.iIns||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="intakeInsNum">شمارهٔ بیمه</label><input type="text" id="intakeInsNum" value="${esc(patDraft.iInsNum||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="intakeInsCap">سقف بیمه (تومان)</label><input type="number" id="intakeInsCap" min="0" value="${esc(patDraft.iInsCap||"")}"></div>
-    </div>
+    ${PF.fields("i",{},patDraft.pf)}
     ${patMsg?`<p class="okline" style="margin-top:8px">${patMsg}</p>`:""}
     ${patErr?`<p class="warn">${esc(patErr)}</p>`:""}
     <p class="row" style="margin-top:8px"><button class="btn primary" data-act="pat-intake" ${patBusy?"disabled":""}>ثبت بیمار</button></p>
@@ -1699,20 +1689,15 @@ function patientPdfHtml(p){
     <div style="border-bottom:2px solid #000;margin-bottom:12px;padding-bottom:8px">
       <div style="font-size:20px;font-weight:800">${esc(p.name)}</div>
       <div style="font-size:13px;color:#333;margin-top:6px">${esc(nm(p.doctor))}</div>
-      <div style="font-size:12px;color:#555;margin-top:4px">سن: ${p.age?fa(p.age):"—"}</div>
-      <div style="font-size:12px;color:#555;margin-top:2px">نام پدر: ${esc(p.fatherName||"—")}</div>
-      <div style="font-size:12px;color:#555;margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
-      <div style="font-size:12px;color:#555;margin-top:2px">شماره ملی: ${esc(p.nationalId||"—")}</div>
     </div>
-    ${p.allergies?`<div style="border:2px solid #b3261e;background:#fcecea;color:#b3261e;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-weight:700">⚠ آلرژی: ${esc(p.allergies)}</div>`:""}
-    ${p.conditions?`<div style="margin-bottom:6px;font-size:13px"><strong>بیماری‌های زمینه‌ای: </strong>${esc(p.conditions)}</div>`:""}
-    ${p.medications?`<div style="margin-bottom:10px;font-size:13px"><strong>داروهای مصرفی: </strong>${esc(p.medications)}</div>`:""}
+    ${PF.pdf(p)}
     <div style="margin-top:10px"><strong style="font-size:14px">برنامه‌ی درمان</strong>
       <table style="border-collapse:collapse;width:100%;margin-top:6px;font-size:12px"><thead><tr><th style="border:1px solid #444;padding:5px;background:#eee;width:80px">وضعیت</th><th style="border:1px solid #444;padding:5px;background:#eee">کار</th><th style="border:1px solid #444;padding:5px;background:#eee;width:100px">قیمت</th></tr></thead><tbody>
       ${p.plan.length?p.plan.map(it=>`<tr><td style="border:1px solid #444;padding:5px;text-align:center;color:${it.status==="done"?"#1e7a3c":"#b3261e"}">${it.status==="done"?"انجام‌شده":"باقی‌مانده"}</td><td style="border:1px solid #444;padding:5px">${planItemLabel(it)}</td><td style="border:1px solid #444;padding:5px;text-align:center">${it.price?fa(it.price):"—"}</td></tr>`).join(""):`<tr><td colspan="3" style="border:1px solid #444;padding:5px;text-align:center;color:#999">کاری ثبت نشده</td></tr>`}
       </tbody></table>
     </div>
     ${(()=>{const fin=patientFinance(p);return fin.cost||fin.paid?`<div style="margin-top:10px;font-size:12px"><strong>هزینه‌ی کارهای انجام‌شده: </strong>${fa(fin.cost)} تومان — <strong>پرداخت‌شده: </strong>${fa(fin.paid)} تومان — <strong>مانده: </strong>${fin.balance>0?fa(fin.balance)+" تومان بدهکار":fin.balance<0?fa(-fin.balance)+" تومان طلبکار":"تسویه"}</div>`:"";})()}
+    ${PF.consent()}
     <div style="margin-top:16px;font-size:10px;color:#999">تاریخ چاپ: ${new Date().toLocaleDateString("fa-IR")}</div>
   </div>`;
 }
@@ -1786,34 +1771,10 @@ function renderPatientSheet(){
   const canEditPlan=byId(who)?.role==="doctor";
   const exportRow=`<div class="row" style="margin:8px 0"><button class="btn" data-act="pat-pdf">دانلود PDF</button><button class="btn quiet" data-act="pat-print">چاپ</button></div>`;
   const showEdit=!isMgr||patDraft.editingInfo;
-  const info=showEdit?`<div class="row" style="flex-wrap:wrap;gap:10px;margin:8px 0">
-      <div style="flex:1 1 70px"><label class="note" for="patAge">سن</label><input type="number" id="patAge" min="0" max="120" value="${p.age??""}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="patFather">نام پدر</label><input type="text" id="patFather" value="${esc(p.fatherName||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="patNid">شماره ملی</label><input type="text" id="patNid" maxlength="10" inputmode="numeric" value="${esc(p.nationalId||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="patPhone">شماره تلفن</label><input type="tel" id="patPhone" value="${esc(p.phone||"")}"></div>
-    </div>
-    <div style="margin-top:6px"><label class="note" for="patCond">بیماری‌های زمینه‌ای</label><textarea id="patCond" style="min-height:50px" placeholder="مثلاً: دیابت، فشار خون">${esc(p.conditions||"")}</textarea></div>
-    <div style="margin-top:6px"><label class="note" for="patMeds">داروهای مصرفی</label><textarea id="patMeds" style="min-height:50px" placeholder="مثلاً: آسپرین، وارفارین">${esc(p.medications||"")}</textarea></div>
-    <div style="margin-top:6px"><label class="note" for="patAllergy" style="color:var(--warn)">آلرژی‌ها</label><textarea id="patAllergy" style="min-height:50px;border-color:var(--warn)" placeholder="مثلاً: پنی‌سیلین، لاتکس">${esc(p.allergies||"")}</textarea></div>
-    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:6px">
-      <div style="flex:1 1 130px"><label class="note" for="patIns">نام بیمه</label><input type="text" id="patIns" value="${esc(p.insurance?.name||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="patInsNum">شمارهٔ بیمه</label><input type="text" id="patInsNum" value="${esc(p.insurance?.number||"")}"></div>
-      <div style="flex:1 1 130px"><label class="note" for="patInsCap">سقف بیمه (تومان)</label><input type="number" id="patInsCap" min="0" value="${esc(p.insurance?.cap||"")}"></div>
-    </div>
-    ${isMgr?"":`<p class="row" style="margin-top:6px"><button class="btn quiet" data-act="pat-info-save">ذخیره اطلاعات</button></p>`}
-    ${p.allergies?`<p class="warn" style="margin-top:6px"><strong>⚠ آلرژی: </strong>${esc(p.allergies)}</p>`:""}`
-    :`<div style="margin:8px 0;font-size:.92rem">
-      <div>سن: ${p.age?fa(p.age):"—"}</div>
-      <div style="margin-top:2px">نام پدر: ${esc(p.fatherName||"—")}</div>
-      <div style="margin-top:2px">شماره ملی: ${esc(p.nationalId||"—")}</div>
-      <div style="margin-top:2px">شماره تلفن: ${esc(p.phone||"—")}</div>
-      <div style="margin-top:4px"><strong>بیماری‌های زمینه‌ای: </strong>${esc(p.conditions||"—")}</div>
-      <div style="margin-top:4px"><strong>داروهای مصرفی: </strong>${esc(p.medications||"—")}</div>
-      <div style="margin-top:4px"><strong>نام بیمه: </strong>${esc(p.insurance?.name||"—")}</div>
-      <div style="margin-top:2px">شمارهٔ بیمه: ${esc(p.insurance?.number||"—")}</div>
-      <div style="margin-top:2px">سقف بیمه: ${p.insurance?.cap?fa(p.insurance.cap)+" تومان":"—"}</div>
-      </div>
-      ${p.allergies?`<p class="warn" style="margin-top:6px"><strong>⚠ آلرژی: </strong>${esc(p.allergies)}</p>`:""}`;
+  const info=showEdit?`${PF.fields("e",p)}
+    ${isMgr?"":`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-info-save">ذخیره اطلاعات</button></p>`}
+    ${PF.allergyText(p)?`<p class="warn" style="margin-top:6px"><strong>⚠ حساسیت: </strong>${esc(PF.allergyText(p))}</p>`:""}`
+    :PF.view(p);
   const rows=p.plan.map(it=>!canEditPlan?`<div class="row" style="justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding:6px 0">
       <span style="color:${it.status==="done"?"var(--ok)":"var(--warn)"};${it.status==="done"?"text-decoration:line-through":"font-weight:600"}">${it.status==="done"?"✓ ":""}${planItemLabel(it)}</span>
       <span class="note">${it.price?fa(it.price)+" تومان":"—"}</span>
@@ -1885,13 +1846,7 @@ async function patOpgDel(id){
 }
 async function patInfoSave(){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
-  const age=($("#patAge")?.value||"").trim(), nid=($("#patNid")?.value||"").trim(), phone=($("#patPhone")?.value||"").trim(), father=($("#patFather")?.value||"").trim();
-  const cond=($("#patCond")?.value||"").trim(), meds=($("#patMeds")?.value||"").trim(), allergy=($("#patAllergy")?.value||"").trim();
-  const insName=($("#patIns")?.value||"").trim(), insNum=($("#patInsNum")?.value||"").trim(), insCap=($("#patInsCap")?.value||"").trim();
-  p.age=age?Math.max(0,Math.min(120,Math.floor(+age))):null;
-  p.nationalId=nid||null; p.phone=phone||null; p.fatherName=father||null;
-  p.conditions=cond||null; p.medications=meds||null; p.allergies=allergy||null;
-  p.insurance={name:insName||null,number:insNum||null,cap:insCap?Math.max(0,Math.floor(+insCap)):null};
+  Object.assign(p,PF.read("e"));
   await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
 }
 async function patToggleEdit(){
@@ -2026,18 +1981,12 @@ async function patIntakeRun(){
   const docId=$("#intakeDoc")?.value;
   if(!name){patErr="اول اسم بیمار را بنویس.";return render()}
   if(!docId){patErr="یک دکتر انتخاب کن.";return render()}
+  const x=PF.read("i");
   patBusy=true; patErr=""; patMsg=""; render();
   try{
-    const age=($("#intakeAge")?.value||"").trim(), nid=($("#intakeNid")?.value||"").trim(), phone=($("#intakePhone")?.value||"").trim(), father=($("#intakeFather")?.value||"").trim();
     const pid=uid();
-    await db.doc("patients/"+pid).set({
-      id:pid, doctor:docId, name,
-      age: age?Math.max(0,Math.min(120,Math.floor(+age))):null,
-      nationalId: nid||null, phone: phone||null, fatherName: father||null,
-      insurance: { name: ($("#intakeIns")?.value||"").trim()||null, number: ($("#intakeInsNum")?.value||"").trim()||null, cap: ($("#intakeInsCap")?.value||"").trim()?Math.max(0,Math.floor(+$("#intakeInsCap")?.value)):null },
-      createdAt:Date.now(), plan:[]
-    });
-    patDraft.iName=""; patDraft.iAge=""; patDraft.iNid=""; patDraft.iPhone=""; patDraft.iFather=""; patDraft.iDoc=docId; patDraft.iIns=""; patDraft.iInsNum=""; patDraft.iInsCap="";
+    await db.doc("patients/"+pid).set({...x, id:pid, doctor:docId, name, createdAt:Date.now(), plan:[]});
+    patDraft.iName=""; patDraft.pf={}; patDraft.iDoc=docId;
     patMsg=`بیمار «${esc(name)}» برای ${esc(nm(docId))} ثبت شد.`;
   }catch(e){patErr=errCopy(e)}
   patBusy=false; render();
@@ -2265,14 +2214,8 @@ function bind(){
   document.querySelectorAll("[data-apst]").forEach(b=>b.onclick=async()=>{const [id,st]=b.dataset.apst.split("|");b.disabled=true;await apptSetStatus(id,st)});
   const psb=$("#patSearchBox"); if(psb) psb.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();patSearch=e.target.value.trim();render()}};
   const ian=$("#intakeName"); if(ian) ian.oninput=e=>patDraft.iName=e.target.value;
-  const iaa=$("#intakeAge"); if(iaa) iaa.oninput=e=>patDraft.iAge=e.target.value;
-  const ian2=$("#intakeNid"); if(ian2) ian2.oninput=e=>patDraft.iNid=e.target.value;
-  const iaf=$("#intakeFather"); if(iaf) iaf.oninput=e=>patDraft.iFather=e.target.value;
-  const iap=$("#intakePhone"); if(iap) iap.oninput=e=>patDraft.iPhone=e.target.value;
+  document.querySelectorAll('[data-pfroot="i"] [data-pf]').forEach(el=>{el.oninput=el.onchange=()=>{patDraft.pf=PF.read("i")}});
   const iad=$("#intakeDoc"); if(iad) iad.onchange=e=>patDraft.iDoc=e.target.value;
-  const iai=$("#intakeIns"); if(iai) iai.oninput=e=>patDraft.iIns=e.target.value;
-  const iain=$("#intakeInsNum"); if(iain) iain.oninput=e=>patDraft.iInsNum=e.target.value;
-  const iaic=$("#intakeInsCap"); if(iaic) iaic.oninput=e=>patDraft.iInsCap=e.target.value;
   document.querySelectorAll("[data-rm]").forEach(b=>b.onclick=async()=>{
     const id=b.dataset.rm; if(rmArm!==id){rmArm=id;staffMsg="";return render()}
     rmArm=null; b.disabled=true; const name=nm(id);

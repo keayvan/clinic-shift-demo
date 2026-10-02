@@ -1,12 +1,12 @@
 {
   "name": "clinic-shift-demo",
-  "version": "2.9.8",
+  "version": "2.10.0",
   "private": true,
   "description": "Offline-first PWA demo for dental clinic shift scheduling (Persian), with feedback collection",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/nlu.test.js"
+    "test": "node tests/nlu.test.js && node tests/patform.test.js"
   },
   "engines": { "node": ">=18" }
 }
