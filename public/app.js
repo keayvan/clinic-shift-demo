@@ -245,6 +245,8 @@ const isoOf=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+St
 function availTarget(){ const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+((6-d.getDay()+7)%7||7)); return d; }
 function availWeek(){ return isoOf(availTarget()); }
 function availDeadline(){ const d=availTarget(); d.setDate(d.getDate()-2); d.setHours(18,0,0,0); return d; }
+/* هشدار «نفرستاده‌ای» فقط از صبح چهارشنبه تا آخر مهلت دیده می‌شود */
+function availUrgent(){ const g=new Date().getDay(); return g===3||g===4||g===5; }
 function availSent(a){ return !!a?.confirmed&&a.week===availWeek(); }
 /* بعد از مهلت، حضور فعلی افرادی که چیزی نفرستاده‌اند خودکار برای مدیر ثبت می‌شود */
 function autoAvail(){
@@ -300,7 +302,7 @@ function staffPages(id){
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
   add("shifts","برنامهٔ هفتگی",sched?weekCalHtml(id):"");
   const done=availSent(a)&&!p;
-  add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done,sub:done?"ثبت شد":"هنوز نفرستادی"});
+  add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done&&availUrgent(),urgent:!done&&availUrgent(),sub:done?"ثبت شد":(availUrgent()?"هنوز نفرستادی":"")});
   add("patients","بیماران من",patientsPanel(id,"list"));
   add("newpat","بیمار جدید",patientsPanel(id,"new"));
   add("intake","پذیرش بیمار جدید",patientIntakePanel(id));
@@ -314,7 +316,7 @@ function staffPages(id){
 /* هشدارهای مهم: کادر قرمز بالای صفحهٔ اصلی و بالای هر برگهٔ پورتال */
 function staffAlerts(id){
   const a=avail[id], p=staffParse[id], items=[];
-  if(sched&&staffPage!=="avail"&&!(availSent(a)&&!p)) items.push(`<div class="panel"><strong>حضور هفته بعد را هنوز نفرستاده‌ای.</strong> <button class="btn quiet" data-page="avail">ثبت حضور</button></div>`);
+  if(sched&&availUrgent()&&staffPage!=="avail"&&!(availSent(a)&&!p)) items.push(`<div class="panel"><strong>حضور هفته بعد را هنوز نفرستاده‌ای.</strong> <button class="btn quiet" data-page="avail">ثبت حضور</button></div>`);
   const body=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+items.join("");
   return body?`<div class="alertbox" role="alert"><div class="alerthead">⚠ مهم</div>${body}</div>`:"";
 }
@@ -342,7 +344,7 @@ function staffView(id){
   if(me.role==="insurance") return h+insuranceTab();
   if(me.role==="lab") return h+LAB.portal(id);
   h+=staffAlerts(id)+myShiftsHome(id)+todayPatientsPanel(id);
-  h+=`<div class="tiles">`+staffPages(id).map(pg=>`<button class="tile ${pg.attn?"attn":""}" data-page="${pg.key}">${pg.badge?`<span class="bd">${fa(pg.badge)}</span>`:""}${esc(pg.title)}${pg.sub?`<small>${pg.sub}</small>`:""}</button>`).join("")+`</div>`;
+  h+=`<div class="tiles">`+staffPages(id).map(pg=>`<button class="tile ${pg.attn?"attn":""} ${pg.urgent?"urgent":""}" data-page="${pg.key}">${pg.badge?`<span class="bd">${fa(pg.badge)}</span>`:""}${esc(pg.title)}${pg.sub?`<small>${pg.sub}</small>`:""}</button>`).join("")+`</div>`;
   return h;
 }
 function openStaffPage(key){

@@ -224,3 +224,5 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .shiftlist li.today{background:var(--bg);font-weight:700;padding-inline:6px;border-radius:8px}
 .calweek td,.calweek th{vertical-align:top;font-size:.85rem}
 .calweek tr.today{background:var(--bg);outline:2px solid var(--accent)}
+.tile.urgent{background:var(--warn-bg);border:2px solid var(--warn);color:var(--warn)}
+.tile.urgent small{color:var(--warn)}
