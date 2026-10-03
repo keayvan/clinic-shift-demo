@@ -2031,9 +2031,7 @@ function patientsTab(){
     <div class="row" style="margin-top:8px"><input type="text" id="patSearchBox" placeholder="جستجوی اسم بیمار…" value="${esc(patSearch)}" style="flex:1 1 160px">
     <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div></div>`;
   if(!rows.length) return h+`<div class="panel"><p class="note">${q?"بیماری با این اسم پیدا نشد.":"هنوز بیماری ثبت نشده."}</p></div>`;
-  h+=`<div class="panel">`+rows.map(([pid,p],i)=>`<div style="${i?"border-top:1px solid var(--line);":""}padding:2px 0">
-      <button class="btn quiet" data-pat="${pid}" style="width:100%;text-align:right">${esc(p.name)}</button>
-    </div>`).join("")+`</div>`;
+  h+=`<div class="panel"><div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>دکتر</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${rows.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${esc(byId(p.doctor)?.name||"")}</td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div></div>`;
   return h;
 }
 
