@@ -238,3 +238,4 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .calgrid.month .calcell{padding:6px 4px;min-height:62px;align-items:center;text-align:center}
 .calgrid.month .mini{font-size:.62rem}
 .calhd{display:contents}.calhd span{text-align:center;font-size:.72rem;color:var(--muted)}
+.linkname{background:none;border:0;padding:0;font:inherit;font-weight:700;color:var(--accent);text-decoration:underline;cursor:pointer;text-align:start}

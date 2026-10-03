@@ -339,7 +339,7 @@ function todayPatientsPanel(id){
   const showDoc=r!=="doctor";
   const tr=rows.map(([i,a])=>{
     const st=APPT_ST[a.status]||APPT_ST.scheduled;
-    return `<tr><td>${a.time?esc(a.time):"—"}</td><td><strong>${esc(a.name)}</strong>${a.patientId&&patients[a.patientId]?` <button class="btn quiet" data-pat="${a.patientId}" style="padding:2px 8px">پرونده</button>`:""}${a.note?`<div class="note">${esc(a.note)}</div>`:""}</td>${showDoc?`<td>${esc(nm(a.doctor))}</td>`:""}<td style="color:${st[1]}">${st[0]}</td><td>${a.status==="scheduled"?`<button class="btn quiet" data-apst="${i}|done">آمد</button> <button class="btn quiet" data-apst="${i}|noshow">نیامد</button>`:""}</td></tr>`;
+    return `<tr><td>${a.time?esc(a.time):"—"}</td><td><button class="linkname" data-appat="${i}">${esc(a.name)}</button>${a.note?`<div class="note">${esc(a.note)}</div>`:""}</td>${showDoc?`<td>${esc(nm(a.doctor))}</td>`:""}<td style="color:${st[1]}">${st[0]}</td><td>${a.status==="scheduled"?`<button class="btn quiet" data-apst="${i}|done">آمد</button> <button class="btn quiet" data-apst="${i}|noshow">نیامد</button>`:""}</td></tr>`;
   }).join("");
   return `<div class="panel">${head}<div style="overflow-x:auto;margin-top:8px"><table class="av" style="min-width:0"><thead><tr><th>ساعت</th><th>بیمار</th>${showDoc?"<th>دکتر</th>":""}<th>وضعیت</th><th></th></tr></thead><tbody>${tr}</tbody></table></div></div>`;
 }
@@ -739,7 +739,7 @@ function openCalDay(iso){
     ${r.free.length?`<div class="note">آنکال: ${r.free.map(x=>esc(nm(x))).join("، ")}</div>`:""}</div>`).join(""):`<p class="note">برای این روز شیفتی در برنامه نیست.</p>`;
   const byDoc={}; inf.list.forEach(([id,a])=>(byDoc[a.doctor]=byDoc[a.doctor]||[]).push([id,a]));
   const pts=inf.list.length?Object.entries(byDoc).map(([doc,rows])=>`<div style="border-top:1px solid var(--line);padding:8px 0"><strong>${esc(nm(doc))}</strong> <span class="note">(${fa(rows.length)} بیمار)</span>
-    ${rows.map(([,a])=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>${a.time?`<span class="note">${esc(a.time)}</span> `:""}${esc(a.name)}${a.note?` <span class="note">— ${esc(a.note)}</span>`:""}<span class="note">${stl[a.status]||""}</span></span>${a.patientId&&patients[a.patientId]?`<button class="btn quiet" data-pat="${a.patientId}" style="padding:2px 8px">پرونده</button>`:""}</div>`).join("")}</div>`).join(""):`<p class="note">نوبتی ثبت نشده.</p>`;
+    ${rows.map(([id,a])=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>${a.time?`<span class="note">${esc(a.time)}</span> `:""}<button class="linkname" data-appat="${id}">${esc(a.name)}</button>${a.note?` <span class="note">— ${esc(a.note)}</span>`:""}<span class="note">${stl[a.status]||""}</span></span></div>`).join("")}</div>`).join(""):`<p class="note">نوبتی ثبت نشده.</p>`;
   Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>${dn} ${fa(jd)} ${PERSIAN_MONTHS[jm-1]}</strong></div>
     <div class="panel">${calCounts(inf)}</div>
     <div class="panel"><strong>حاضران</strong>${sh}</div><div class="panel"><strong>بیماران</strong>${pts}</div>`,null,{page:true,kind:"calday"});
@@ -2417,6 +2417,17 @@ async function apptAdd(btn){
   render();
 }
 async function apptSetStatus(id,status){ const a=appts[id]; if(!a) return; await db.doc("appointments/"+id).set({...a,status}); }
+/* کلیک روی اسم بیمار در نوبت: پرونده باز می‌شود؛ اگر پرونده نداشت اول ساخته می‌شود */
+async function openApptPatient(apId){
+  const a=appts[apId]; if(!a) return;
+  let pid=a.patientId&&patients[a.patientId]?a.patientId:findPatientIdByName(a.doctor,a.name);
+  if(!pid){
+    pid=uid(); const p={id:pid,doctor:a.doctor,name:a.name,age:null,nationalId:null,phone:null,createdAt:Date.now(),plan:[]};
+    patients[pid]=p; await db.doc("patients/"+pid).set(p);
+  }
+  if(a.patientId!==pid) await db.doc("appointments/"+apId).set({...a,patientId:pid});
+  openPatientSheet(pid);
+}
 async function apptDelete(id){ await db.doc("appointments/"+id).delete(); }
 
 /* ---------- events ---------- */
@@ -2428,6 +2439,7 @@ function bind(){
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
+  document.querySelectorAll("[data-appat]").forEach(b=>b.onclick=()=>openApptPatient(b.dataset.appat));
   document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>openStaffPage(b.dataset.page));
   document.querySelectorAll("[data-cal-day]").forEach(b=>b.onclick=()=>openCalDay(b.dataset.calDay));
   const npn=$("#newPatName"); if(npn) npn.oninput=e=>patDraft.name=e.target.value;
