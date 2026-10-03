@@ -245,9 +245,7 @@ const LAB = (() => {
         <div style="flex:1 1 130px"><label class="note" style="display:block" for="labfQ">اسم بیمار</label><input type="text" id="labfQ" data-labf="labfQ" style="width:100%;box-sizing:border-box" value="${esc(flt.q)}"></div>
       </div></div>
       <div class="panel">${rows.length ? table(rows) : `<p class="note">${list().length ? "موردی با این فیلتر نیست." : "هنوز کاری برای لابراتوار ثبت نشده."}</p>`}</div>
-      <div class="panel"><strong>سفارش تازه برای لابراتوار</strong><div style="margin-top:8px">${form("m")}</div></div>
-      <div class="panel"><strong>داده‌های آزمایشی</strong><p class="note" style="margin:4px 0 8px">برای دیدن کارکرد لابراتوار، چند سفارش در مرحله‌های مختلف می‌سازد (${fa(list().filter(o => o.demo).length)} سفارش آزمایشی الان هست). بعداً با «پاک کردن» همه‌شان برداشته می‌شود و سفارش‌های واقعی دست نمی‌خورند.</p>
-        <p class="row"><button class="btn" data-lab="demo">ساخت چند سفارش آزمایشی</button><button class="btn quiet" data-lab="demo-clear">پاک کردن سفارش‌های آزمایشی</button></p></div>`;
+      <div class="panel"><strong>سفارش تازه برای لابراتوار</strong><div style="margin-top:8px">${form("m")}</div></div>`;
   }
 
   /* ---------- پورتال لابراتوار (دلارام) ---------- */
@@ -261,6 +259,9 @@ const LAB = (() => {
       sec("فرستاده‌شده، منتظر رسیدن به کلینیک", "ready") + sec("رسیده به کلینیک", "received") +
       (done.length ? `<div class="panel"><strong>تحویل‌شده‌های اخیر</strong>${table(done)}</div>` : "");
   }
+
+  const demoPanel = () => `<div class="panel"><strong>داده‌های آزمایشی</strong><p class="note" style="margin:4px 0 8px">برای دیدن کارکرد لابراتوار، چند سفارش در مرحله‌های مختلف می‌سازد (${fa(list().filter(o => o.demo).length)} سفارش آزمایشی الان هست). بعداً با «پاک کردن» همه‌شان برداشته می‌شود و سفارش‌های واقعی دست نمی‌خورند.</p>
+        <p class="row"><button class="btn" data-lab="demo">ساخت چند سفارش آزمایشی</button><button class="btn quiet" data-lab="demo-clear">پاک کردن سفارش‌های آزمایشی</button></p></div>`;
 
   /* ---------- پنل دکتر، دستیار و منشی ---------- */
   function staffPanel(id, part) {
@@ -312,6 +313,6 @@ const LAB = (() => {
       } finally { b.disabled = false; }
     });
   }
-  return { start, tab, portal, staffPanel, seedDemo, demoFor, clearDemo, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, visibleFor, STATUS, KINDS, DEMO_PLAN } };
+  return { start, tab, portal, staffPanel, seedDemo, demoFor, clearDemo, demoPanel, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, visibleFor, STATUS, KINDS, DEMO_PLAN } };
 })();
 if (typeof globalThis !== "undefined") globalThis.LAB = LAB;

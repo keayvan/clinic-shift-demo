@@ -753,9 +753,9 @@ function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
-  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["calendar","تقویم"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["demo","داده آزمایشی"],["feedback","نظرها"]];
+  const tabs=[["demo","داده آزمایشی"],["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["calendar","تقویم"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
   let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
-  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab()+reportDemoPanel(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="calendar"?calendarTab(): tab==="demo"?demoTab(): tab==="inventory"?inventoryTab()+inventoryDemoPanel(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
+  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="calendar"?calendarTab(): tab==="demo"?demoTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
 /* ---------- monthly report ---------- */
@@ -1080,7 +1080,7 @@ function wipePanel(){
 /* تب «داده آزمایشی»: همهٔ ابزارهای ساخت و پاک‌کردن یک‌جا */
 function demoTab(){
   return `<p class="lead">این‌جا برای هر بخش داده آزمایشی بساز یا پاک کن. هر دکمهٔ «پاک کردن» فقط همان داده‌های آزمایشیِ خودش را برمی‌دارد. بیمارهای آزمایشی خودشان چند سفارش لابراتوار و پروندهٔ ایمپلنت هم می‌گیرند.</p>
-    ${staffDemoPanel()}${patientDemoPanel()}${apptDemoPanel()}${inventoryDemoPanel()}${reportDemoPanel()}${wipePanel()}`;
+    ${staffDemoPanel()}${patientDemoPanel()}${apptDemoPanel()}${LAB.demoPanel()}${inventoryDemoPanel()}${reportDemoPanel()}${wipePanel()}`;
 }
 function apptDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: نوبت‌ها</strong><p class="note" style="margin:2px 0 6px">برای شنبه تا پنج‌شنبهٔ این هفته، ۲ تا ۵ نوبت تصادفی برای هر دکتر.</p><p class="row"><button class="btn" data-act="ap-demo">افزودن نوبت‌های آزمایشی این هفته</button><button class="btn quiet" data-act="ap-demo-clear">پاک کردن نوبت‌های آزمایشی</button></p></div>`;
@@ -1088,6 +1088,7 @@ function apptDemoPanel(){
 function patientDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض همان تعداد فعلی است). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",Object.keys(patients).length)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button><button class="btn quiet" data-act="pat-demo-clear">پاک کردن بیماران آزمایشی</button></div>
+    <p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران موجود</button></p>
     ${patMsg?`<p class="okline" style="margin-top:6px">${patMsg}</p>`:""}</div>`;
 }
 async function patientDemoRun(){
@@ -1110,7 +1111,7 @@ async function patientDemoRun(){
   demoN={}; patMsg=`${fa(n)} بیمار آزمایشی با پروندهٔ کامل ساخته شد؛ ${fa(nl)} سفارش لابراتوار و ${fa(ni)} پروندهٔ ایمپلنت هم برای بعضی‌شان ساخته شد.`; render();
 }
 function staffTab(){
-  let h=staffDemoPanel()+`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
+  let h=`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
   for(const r of ["doctor","assistant","reception","insurance","lab"]){
     h+=`<div class="cathead">${r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها"} <span class="note" style="font-weight:400">(${fa(ofRole(r).length)})</span></div>`;
     for(const s of ofRole(r)) h+=`<div class="staffrow"><span class="tag">${ROLEN[r]}</span><input type="text" data-name="${s.id}" value="${esc(nameDraft[s.id]??s.name)}" aria-label="نام">${r==="doctor"?`<select data-spec="${s.id}" aria-label="تخصص">${SPECS.map(x=>`<option ${(specDraft[s.id]??s.specialty)===x?"selected":""}>${x}</option>`).join("")}</select>`:""}<button class="x" data-rm="${s.id}" aria-label="حذف ${esc(s.name)}">${rmArm===s.id?"مطمئنید؟ حذف کامل":"حذف"}</button></div>`;
@@ -2370,8 +2371,7 @@ function patientsTab(){
   const all=Object.entries(patients), active=!!(q||F.doc||F.plan||F.sort!=="new");
   const rows=all.filter(([,p])=>(!q||NLU.norm(p.name).includes(q))&&(!F.doc||p.doctor===F.doc)&&planOk(p)).sort(SORT[F.sort]||SORT.new);
   const opt=(v,l,cur)=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`;
-  let h=patientDemoPanel()+`<div class="panel"><strong>بیماران</strong>
-    <p class="row" style="margin-top:6px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران</button></p>
+  let h=`<div class="panel"><strong>بیماران</strong>
     <div class="row" style="margin-top:8px"><input type="text" id="patSearchBox" placeholder="جستجوی اسم بیمار…" value="${esc(patSearch)}" style="flex:1 1 160px">
     <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
@@ -2461,8 +2461,7 @@ function apptFormHtml(){
   const monthOpts=PERSIAN_MONTHS.map((n,i)=>`<option value="${i+1}" ${apptDraft.jm===i+1?"selected":""}>${n}</option>`).join("");
   const faYear=y=>Number(y).toLocaleString("fa-IR",{useGrouping:false});
   const yearOpts=[todayJy-1,todayJy,todayJy+1,todayJy+2].map(y=>`<option value="${y}" ${apptDraft.jy===y?"selected":""}>${faYear(y)}</option>`).join("");
-  return `<div class="panel"><strong>داده آزمایشی</strong><p class="note" style="margin:2px 0 6px">چند نوبت تصادفی برای شش‌روز این هفته می‌سازد تا تقویم و «بیماران امروز» را ببینی.</p><p class="row"><button class="btn" data-act="ap-demo">افزودن نوبت‌های آزمایشی این هفته</button><button class="btn quiet" data-act="ap-demo-clear">پاک کردن نوبت‌های آزمایشی</button></p>${apptMsg?`<p class="okline">${apptMsg}</p>`:""}</div>
-  <div class="panel"><strong>نوبت جدید</strong>
+  return `<div class="panel"><strong>نوبت جدید</strong>
     <label class="note" for="apName" style="display:block;margin-top:6px">اسم بیمار</label>
     <input type="text" id="apName" list="apPatList" placeholder="اسم بیمار" value="${esc(apptDraft.name||"")}">
     <datalist id="apPatList">${Object.values(patients).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist>
