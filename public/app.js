@@ -117,20 +117,21 @@ async function exportInsXlsx(){
   db=LDB;
   await SYNC.boot();
   SYNC.subscribe(()=>{ if(who==="manager") render(); });
+  const clean=!!(await LDB.doc("clinic/meta").get()).data?.()?.clean;
   const fillSeeded=async()=>{ for(const d of (await LDB.collection("patients").get()).docs) await LDB.doc("patients/"+d.id).set(PF.demo(d.data())) };
   if(!LDB.hasData()){ await seedDemo(); await fillSeeded(); }
-  else{
+  else if(!clean){
     if(!LDB.hasAny("patients")){ await seedPatientsIfMissing(); await fillSeeded(); }
     if(!LDB.hasAny("inventory")) await seedInventoryIfMissing();
   }
-  { const c=(await LDB.doc("clinic/config").get()).data();
+  if(!clean){ const c=(await LDB.doc("clinic/config").get()).data();
     if(c&&!c.staff.some(x=>x.role==="insurance")){ c.staff.push({id:"i1",name:"کامران",role:"insurance"}); c.usedIds=[...new Set([...(c.usedIds||[]),"i1"])]; await LDB.doc("clinic/config").set(c); }
     if(c&&!c.staff.some(x=>x.role==="lab")){ c.staff.push({id:"l1",name:"دلارام",role:"lab"}); c.usedIds=[...new Set([...(c.usedIds||[]),"l1"])]; await LDB.doc("clinic/config").set(c); } }
   { const INS=[["تامین‌اجتماعی",50e6],["بیمهٔ ملی",40e6],["رازی",60e6],[null,null]]; let n=0;
     for(const d of (await LDB.collection("patients").get()).docs){ const p=d.data(); if("insurance" in p) continue;
       const [name,cap]=INS[n++%INS.length]; p.insurance={name,number:name?String(100000000+Math.floor(Math.random()*9e8)):null,cap};
       await LDB.doc("patients/"+d.id).set(p); } }
-  if(!LDB.hasAny("implants")){ cfg=(await LDB.doc("clinic/config").get()).data(); await IMP.seed(); }
+  if(!clean&&!LDB.hasAny("implants")){ cfg=(await LDB.doc("clinic/config").get()).data(); await IMP.seed(); }
   db.doc("clinic/config").onSnapshot(sn=>{cfg=sn.exists?sn.data():null;loaded.cfg=true;autoAvail();render()},()=>{});
   db.collection("avail").onSnapshot(q=>{avail={};q.docs.forEach(x=>avail[x.id]=x.data());loaded.avail=true;autoAvail();render()},()=>{});
   db.doc("clinic/schedule").onSnapshot(sn=>{sched=sn.exists?sn.data():null;loaded.sched=true;render()},()=>{});
@@ -1030,12 +1031,22 @@ async function patientDemoClear(){
 }
 /* شروع تمیز: همهٔ دادهٔ بالینی؛ کارکنان و تنظیمات دست‌نخورده می‌مانند */
 async function wipeAll(){
+  const withStaff=!!document.getElementById("wipeStaff")?.checked;
   let n=0;
-  for(const col of ["patients","appointments","lab","implants","inventory","archive"]){
+  const cols=["patients","appointments","lab","implants","inventory","archive"].concat(withStaff?["avail","requests","responses","docpref"]:[]);
+  for(const col of cols){
     const q=await db.collection(col).get();
     for(const d of q.docs){ await db.doc(col+"/"+d.id).delete(); n++ }
   }
-  patients={}; appts={}; inventory={}; archive={}; demoMsg=`${fa(n)} مورد پاک شد. حالا از صفر شروع می‌کنی.`; render();
+  if(withStaff){
+    const next=structuredClone(cfg); next.usedIds=[...new Set([...(next.usedIds||[]),...next.staff.map(x=>x.id)])];
+    next.staff=[]; next.pairings={}; next.rules=[]; delete next.former; await db.doc("clinic/config").set(next);
+    try{ await db.doc("clinic/schedule").delete() }catch(e){}
+    who="manager";
+  }
+  await db.doc("clinic/meta").set({clean:true,at:Date.now()});  /* تا بعد از بازشدن اپ، نمونه‌های اولیه دوباره ساخته نشوند */
+  patients={}; appts={}; inventory={}; archive={};
+  demoMsg=`${fa(n)} مورد پاک شد${withStaff?" و همهٔ کارکنان برداشته شد؛ از تب «کارکنان» افراد واقعی را اضافه کن":""}. حالا از صفر شروع می‌کنی.`; render();
 }
 let demoMsg="";
 const INV_POOL=[["آمالگام","ویال"],["کامپوزیت دندانی","بسته"],["بی‌حسی لیدوکائین","ویال"],["گاز استریل","بسته"],["دستکش لاتکس","جعبه"],["ماسک جراحی","جعبه"],["پودر جرمگیری","بسته"],["روکش موقت","بسته"],["نخ بخیه","بسته"],["مته دندانپزشکی","عدد"],["سیمان گلاس‌آینومر","بسته"],["ایمپلنت تیتانیوم","عدد"],["غشای استخوانی","بسته"],["فیلر پالپ","بسته"],["نوار ماتریکس","بسته"],["سرنگ یک‌بارمصرف","جعبه"],["بِرِکت ارتودنسی","بسته"],["قالب‌گیری آلژینات","بسته"],["آینه دندانپزشکی","عدد"],["محلول ضدعفونی","بطری"]];
@@ -1074,7 +1085,8 @@ async function reportDemoClear(){
   demoMsg=`${fa(ids.length)} هفتهٔ آزمایشی پاک شد.`; render();
 }
 function wipePanel(){
-  return `<div class="panel" style="border:2px solid var(--warn)"><strong>شروع تمیز</strong><p class="note" style="margin:2px 0 8px">همهٔ بیماران، نوبت‌ها، سفارش‌های لابراتوار، ایمپلنت‌ها، انبار و گزارش‌های آرشیو را پاک می‌کند (چه آزمایشی چه نه). کارکنان و تنظیمات می‌مانند. برگشت ندارد.</p>
+  return `<div class="panel" style="border:2px solid var(--warn)"><strong>شروع تمیز</strong><p class="note" style="margin:2px 0 8px">همهٔ بیماران، نوبت‌ها، سفارش‌های لابراتوار، ایمپلنت‌ها، انبار و گزارش‌های آرشیو را پاک می‌کند (چه آزمایشی چه نه). برگشت ندارد.</p>
+    <label class="row" style="gap:6px;margin-bottom:8px"><input type="checkbox" id="wipeStaff" checked> کارکنان قبلی (و برنامه و حضورها) هم پاک شوند؛ فقط مدیر بماند</label>
     <button class="btn danger" data-act="wipe-all">شروع تمیز: پاک کردن همهٔ داده‌ها</button>${demoMsg?`<p class="okline" style="margin-top:6px">${esc(demoMsg)}</p>`:""}</div>`;
 }
 /* تب «داده آزمایشی»: همهٔ ابزارهای ساخت و پاک‌کردن یک‌جا */
@@ -1110,8 +1122,18 @@ async function patientDemoRun(){
   }
   demoN={}; patMsg=`${fa(n)} بیمار آزمایشی با پروندهٔ کامل ساخته شد؛ ${fa(nl)} سفارش لابراتوار و ${fa(ni)} پروندهٔ ایمپلنت هم برای بعضی‌شان ساخته شد.`; render();
 }
+function staffAddPanel(){
+  return `<div class="panel"><strong>افزودن کارمند</strong>
+    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:6px">
+      <div style="flex:2 1 160px"><label class="note" for="addStaffName" style="display:block">نام</label><input type="text" id="addStaffName" style="width:100%;box-sizing:border-box"></div>
+      <div style="flex:1 1 120px"><label class="note" for="addStaffRole" style="display:block">نقش</label><select id="addStaffRole" style="width:100%">${["doctor","assistant","reception","insurance","lab"].map(r=>`<option value="${r}">${ROLEN[r]}</option>`).join("")}</select></div>
+      <div style="flex:1 1 140px"><label class="note" for="addStaffSpec" style="display:block">تخصص (فقط دکتر)</label><select id="addStaffSpec" style="width:100%">${SPECS.map(x=>`<option>${x}</option>`).join("")}</select></div>
+    </div>
+    ${staffMsg?`<p class="${staffMsgBad?"warn":"okline"}" style="margin-top:8px">${esc(staffMsg)}</p>`:""}
+    <p class="row" style="margin-top:8px"><button class="btn primary" data-act="staff-add">افزودن</button></p></div>`;
+}
 function staffTab(){
-  let h=`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
+  let h=staffAddPanel()+`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
   for(const r of ["doctor","assistant","reception","insurance","lab"]){
     h+=`<div class="cathead">${r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها"} <span class="note" style="font-weight:400">(${fa(ofRole(r).length)})</span></div>`;
     for(const s of ofRole(r)) h+=`<div class="staffrow"><span class="tag">${ROLEN[r]}</span><input type="text" data-name="${s.id}" value="${esc(nameDraft[s.id]??s.name)}" aria-label="نام">${r==="doctor"?`<select data-spec="${s.id}" aria-label="تخصص">${SPECS.map(x=>`<option ${(specDraft[s.id]??s.specialty)===x?"selected":""}>${x}</option>`).join("")}</select>`:""}<button class="x" data-rm="${s.id}" aria-label="حذف ${esc(s.name)}">${rmArm===s.id?"مطمئنید؟ حذف کامل":"حذف"}</button></div>`;
@@ -2733,6 +2755,12 @@ async function act(a,btn){
   if(a==="inv-demo-clear"){btn.disabled=true;return inventoryDemoClear()}
   if(a==="rep-demo"){btn.disabled=true;return reportDemoRun()}
   if(a==="rep-demo-clear"){btn.disabled=true;return reportDemoClear()}
+  if(a==="staff-add"){
+    const name=($("#addStaffName")?.value||"").trim(), role=$("#addStaffRole")?.value, spec=$("#addStaffSpec")?.value;
+    if(!name){staffMsgBad=true;staffMsg="اول نام را بنویس.";return render()}
+    await db.doc("clinic/config").set(applyRuleActions(cfg,[{op:"add_staff",name:name.slice(0,40),role,...(role==="doctor"?{specialty:spec}:{})}]));
+    staffMsgBad=false; staffMsg=`«${name}» به‌عنوان ${ROLEN[role]} اضافه شد.`; return render();
+  }
   if(a==="staff-demo-clear"){btn.disabled=true;return staffDemoClear()}
   if(a==="pat-demo-clear"){btn.disabled=true;return patientDemoClear()}
   if(a==="wipe-all"){ if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="مطمئنی؟ همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها پاک می‌شود. دوباره بزن";return} btn.disabled=true; return wipeAll() }
