@@ -55,7 +55,7 @@ let invDraft={name:"",unit:"",qty:"",minQty:""}, invErr="";
 let apptDraft={name:"",doctor:"",jy:null,jm:null,jd:null,time:"",note:""}, apptErr="", apptMsg="";
 let patSearch="", patFilter={doc:"",plan:"",sort:"new"};
 let who=(()=>{try{return localStorage.getItem("who")||"manager"}catch(e){return "manager"}})();
-let tab="schedule";
+let tab="schedule", tabScroll=0;
 let staffDraft={}, staffParse={}, staffBusy=false, staffErr="";
 let ruleDraft="", rulePending=null, ruleBusy=false, ruleErr="";
 let clinicNameDraft=null;
@@ -117,9 +117,10 @@ async function exportInsXlsx(){
   db=LDB;
   await SYNC.boot();
   SYNC.subscribe(()=>{ if(who==="manager") render(); });
-  if(!LDB.hasData()) await seedDemo();
+  const fillSeeded=async()=>{ for(const d of (await LDB.collection("patients").get()).docs) await LDB.doc("patients/"+d.id).set(PF.demo(d.data())) };
+  if(!LDB.hasData()){ await seedDemo(); await fillSeeded(); }
   else{
-    if(!LDB.hasAny("patients")){ await seedPatientsIfMissing(); for(const d of (await LDB.collection("patients").get()).docs) await LDB.doc("patients/"+d.id).set(PF.demo(d.data())); }
+    if(!LDB.hasAny("patients")){ await seedPatientsIfMissing(); await fillSeeded(); }
     if(!LDB.hasAny("inventory")) await seedInventoryIfMissing();
   }
   { const c=(await LDB.doc("clinic/config").get()).data();
@@ -177,7 +178,10 @@ function render(){
   const app=$("#app");
   if(!cfg){app.innerHTML='<div class="panel">هنوز کارکنان تعریف نشده‌اند.</div>';return}
   renderWho();
+  const oldTabs=app.querySelector(".tabs"); if(oldTabs) tabScroll=oldTabs.scrollLeft;
   app.innerHTML = who==="manager"?managerView():staffView(who);
+  const newTabs=app.querySelector(".tabs");
+  if(newTabs){ newTabs.scrollLeft=tabScroll; newTabs.querySelector('[aria-selected="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}); }
   syncStaffPage();
   bind();
 }
@@ -977,8 +981,62 @@ async function ruleApply(){
   render();
 }
 
+/* ---------- داده آزمایشی: کارکنان و بیماران (تعداد قابل‌تنظیم، پیش‌فرض = تعداد فعلی) ---------- */
+const DEMO_FIRST=["علی","مریم","رضا","زهرا","حسین","سارا","محمد","نرگس","امیر","فاطمه","کامران","لیلا","پویا","شیما","مهدی","الهام","بابک","نازنین","سعید","مینا"];
+const DEMO_LAST=["محمدی","کریمی","رحیمی","حسینی","نوری","صادقی","جلالی","قاسمی","موسوی","اکبری","رضایی","احمدی","یزدانی","کاظمی","فرهادی"];
+let demoN={};
+const demoName=()=>DEMO_FIRST[Math.floor(Math.random()*DEMO_FIRST.length)]+" "+DEMO_LAST[Math.floor(Math.random()*DEMO_LAST.length)];
+function demoCount(key,def){ const v=demoN[key]; return v===undefined?def:v }
+function demoNumRow(key,label,def){
+  return `<div style="flex:1 1 90px"><label class="note" for="dn-${key}" style="display:block">${label}</label><input type="number" id="dn-${key}" data-dn="${key}" min="0" max="60" inputmode="numeric" value="${demoCount(key,def)}" style="width:100%;box-sizing:border-box"></div>`;
+}
+function staffDemoPanel(){
+  const n=r=>ofRole(r).length;
+  return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض همان تعداد فعلی است). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}</div>
+    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
+}
+async function staffDemoRun(){
+  const want={doctor:+demoCount("sd",ofRole("doctor").length)||0,assistant:+demoCount("sa",ofRole("assistant").length)||0,reception:+demoCount("sr",ofRole("reception").length)||0};
+  const pick=a=>a[Math.floor(Math.random()*a.length)];
+  const c=structuredClone(cfg), before=new Set(c.staff.map(x=>x.id)), actions=[];
+  for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
+  const next=applyRuleActions(c,actions);
+  const fresh=next.staff.filter(x=>!before.has(x.id));
+  const docs=next.staff.filter(x=>x.role==="doctor");
+  for(const a of fresh.filter(x=>x.role==="assistant")){ const d=pick(docs); if(d){ next.pairings[d.id]=[...new Set([...(next.pairings[d.id]||[]),a.id])] } }
+  await db.doc("clinic/config").set(next);
+  for(const s of fresh){
+    const g=emptyGrid(), p=s.role==="doctor"?.55:.7;
+    for(const [k] of DAYS) for(const [sk] of SHIFTS) g[k][sk]=Math.random()<p;
+    await db.doc("avail/"+s.id).set({staffId:s.id,text:"(داده تست)",grid:g,summary:"حضور تصادفی برای تست",confirmed:true,week:availWeek(),auto:false,updatedAt:Date.now()});
+  }
+  demoN={}; staffMsgBad=false; staffMsg=`${fa(fresh.length)} نفر اضافه شد.`; render();
+}
+function patientDemoPanel(){
+  return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض همان تعداد فعلی است). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",Object.keys(patients).length)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button></div>
+    ${patMsg?`<p class="okline" style="margin-top:6px">${patMsg}</p>`:""}</div>`;
+}
+async function patientDemoRun(){
+  const docs=ofRole("doctor"); if(!docs.length){ patMsg="اول دکتر اضافه کن."; return render() }
+  const n=Math.min(200,Math.max(0,+demoCount("pn",Object.keys(patients).length)||0));
+  const TXS=[["root_canal","عصب‌کشی"],["scaling","جرمگیری"],["extraction","کشیدن دندان"],["crown","روکش"],["filling","پرکردن"],["checkup","معاینه"]];
+  const pick=a=>a[Math.floor(Math.random()*a.length)];
+  for(let i=0;i<n;i++){
+    const d=docs[i%docs.length], plan=[], items=1+Math.floor(Math.random()*4);
+    for(let k=0;k<items;k++){
+      const [tx,label]=pick(TXS), tooth=Math.random()<.7?String(1+Math.floor(Math.random()*32)):null, done=Math.random()<.4;
+      plan.push({id:"pi"+uid()+k,tooth,arch:null,tx,label,text:label+(tooth?" دندان "+tooth:""),status:done?"done":"pending",price:done?pick([300000,500000,800000,1500000]):0,addedAt:Date.now()-k*864e5,doneAt:done?Date.now():null});
+    }
+    const id="p"+uid(), ins=pick([["تامین‌اجتماعی",50e6],["بیمهٔ ملی",40e6],["رازی",60e6],["آزاد",null]]);
+    const p=PF.demo({id,doctor:d.id,name:demoName(),createdAt:Date.now()-i*1000,plan,insurance:{name:ins[0],cap:ins[1]}});
+    await db.doc("patients/"+id).set(p); patients[id]=p;
+  }
+  demoN={}; patMsg=`${fa(n)} بیمار آزمایشی با پروندهٔ کامل ساخته شد.`; render();
+}
 function staffTab(){
-  let h=`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
+  let h=staffDemoPanel()+`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
   for(const r of ["doctor","assistant","reception","insurance","lab"]){
     h+=`<div class="cathead">${r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها"} <span class="note" style="font-weight:400">(${fa(ofRole(r).length)})</span></div>`;
     for(const s of ofRole(r)) h+=`<div class="staffrow"><span class="tag">${ROLEN[r]}</span><input type="text" data-name="${s.id}" value="${esc(nameDraft[s.id]??s.name)}" aria-label="نام">${r==="doctor"?`<select data-spec="${s.id}" aria-label="تخصص">${SPECS.map(x=>`<option ${(specDraft[s.id]??s.specialty)===x?"selected":""}>${x}</option>`).join("")}</select>`:""}<button class="x" data-rm="${s.id}" aria-label="حذف ${esc(s.name)}">${rmArm===s.id?"مطمئنید؟ حذف کامل":"حذف"}</button></div>`;
@@ -2238,8 +2296,8 @@ function patientsTab(){
   const all=Object.entries(patients), active=!!(q||F.doc||F.plan||F.sort!=="new");
   const rows=all.filter(([,p])=>(!q||NLU.norm(p.name).includes(q))&&(!F.doc||p.doctor===F.doc)&&planOk(p)).sort(SORT[F.sort]||SORT.new);
   const opt=(v,l,cur)=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`;
-  let h=`<div class="panel"><strong>بیماران</strong>
-    <p class="row" style="margin-top:6px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران</button>${patMsg?`<span class="okline">${patMsg}</span>`:""}</p>
+  let h=patientDemoPanel()+`<div class="panel"><strong>بیماران</strong>
+    <p class="row" style="margin-top:6px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران</button></p>
     <div class="row" style="margin-top:8px"><input type="text" id="patSearchBox" placeholder="جستجوی اسم بیمار…" value="${esc(patSearch)}" style="flex:1 1 160px">
     <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
@@ -2449,6 +2507,7 @@ function bind(){
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
+  document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
   document.querySelectorAll("[data-appat]").forEach(b=>b.onclick=()=>openApptPatient(b.dataset.appat));
   document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>openStaffPage(b.dataset.page));
@@ -2597,6 +2656,8 @@ async function act(a,btn){
   if(a==="clinic-name-save") return clinicNameSave();
   if(a==="pat-search"){patSearch=($("#patSearchBox")?.value||"").trim();return render()}
   if(a==="pat-search-clear"){patSearch="";return render()}
+  if(a==="staff-demo"){btn.disabled=true;return staffDemoRun()}
+  if(a==="pat-demo-new"){btn.disabled=true;return patientDemoRun()}
   if(a==="pat-demo-fill"){
     btn.disabled=true; let n=0;
     for(const [id,p] of Object.entries(patients)){ const q=PF.demo(p); if(JSON.stringify(q)!==JSON.stringify(p)){ await db.doc("patients/"+id).set(q); patients[id]=q; n++ } }
