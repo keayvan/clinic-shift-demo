@@ -2,7 +2,7 @@ const DAYS=[["sat","شنبه"],["sun","یکشنبه"],["mon","دوشنبه"],["t
 const SHIFTS=[["m","صبح"],["e","عصر"]];
 const DAYN=Object.fromEntries(DAYS), SHN=Object.fromEntries(SHIFTS);
 const SPECS=["عمومی","ارتودنسی","کودکان","اندو (ریشه)","جراحی","پریو (لثه)","ایمپلنت","ترمیمی و زیبایی","پروتز"];
-const ROLEN={doctor:"دکتر",assistant:"دستیار",reception:"منشی",insurance:"مسئول بیمه"};
+const ROLEN={doctor:"دکتر",assistant:"دستیار",reception:"منشی",insurance:"مسئول بیمه",lab:"لابراتوار"};
 const fa=n=>Number(n).toLocaleString("fa-IR");
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const uid=()=>"r"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
@@ -53,7 +53,7 @@ let cfg=null, avail={}, sched=null, archive={}, patients={}, inventory={}, appts
 let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=false;
 let invDraft={name:"",unit:"",qty:"",minQty:""}, invErr="";
 let apptDraft={name:"",doctor:"",jy:null,jm:null,jd:null,time:"",note:""}, apptErr="", apptMsg="";
-let patSearch="";
+let patSearch="", patFilter={doc:"",plan:"",sort:"new"};
 let who=(()=>{try{return localStorage.getItem("who")||"manager"}catch(e){return "manager"}})();
 let tab="schedule";
 let staffDraft={}, staffParse={}, staffBusy=false, staffErr="";
@@ -123,7 +123,8 @@ async function exportInsXlsx(){
     if(!LDB.hasAny("inventory")) await seedInventoryIfMissing();
   }
   { const c=(await LDB.doc("clinic/config").get()).data();
-    if(c&&!c.staff.some(x=>x.role==="insurance")){ c.staff.push({id:"i1",name:"کامران",role:"insurance"}); c.usedIds=[...new Set([...(c.usedIds||[]),"i1"])]; await LDB.doc("clinic/config").set(c); } }
+    if(c&&!c.staff.some(x=>x.role==="insurance")){ c.staff.push({id:"i1",name:"کامران",role:"insurance"}); c.usedIds=[...new Set([...(c.usedIds||[]),"i1"])]; await LDB.doc("clinic/config").set(c); }
+    if(c&&!c.staff.some(x=>x.role==="lab")){ c.staff.push({id:"l1",name:"دلارام",role:"lab"}); c.usedIds=[...new Set([...(c.usedIds||[]),"l1"])]; await LDB.doc("clinic/config").set(c); } }
   { const INS=[["تامین‌اجتماعی",50e6],["بیمهٔ ملی",40e6],["رازی",60e6],[null,null]]; let n=0;
     for(const d of (await LDB.collection("patients").get()).docs){ const p=d.data(); if("insurance" in p) continue;
       const [name,cap]=INS[n++%INS.length]; p.insurance={name,number:name?String(100000000+Math.floor(Math.random()*9e8)):null,cap};
@@ -139,6 +140,7 @@ async function exportInsXlsx(){
   db.collection("patients").onSnapshot(q=>{patients={};q.docs.forEach(x=>patients[x.id]=x.data());render();if(patDraft.openId&&!$("#sheet").hidden)renderPatientSheet()},()=>{});
   db.collection("inventory").onSnapshot(q=>{inventory={};q.docs.forEach(x=>inventory[x.id]=x.data());render()},()=>{});
   db.collection("appointments").onSnapshot(q=>{appts={};q.docs.forEach(x=>appts[x.id]=x.data());render()},()=>{});
+  LAB.start();
   IMP.start();
   Shell.start();
 })();
@@ -148,8 +150,8 @@ $("#whoSel").addEventListener("change",e=>{who=e.target.value;FB.act("who:"+who)
 function renderWho(){
   const sel=$("#whoSel"); if(!cfg) return;
   let h='<option value="manager">مدیر مجموعه</option>';
-  for(const r of ["doctor","assistant","reception","insurance"]){
-    h+=`<optgroup label="${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}">`+ofRole(r).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")+"</optgroup>";
+  for(const r of ["doctor","assistant","reception","insurance","lab"]){
+    h+=`<optgroup label="${r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها"}">`+ofRole(r).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join("")+"</optgroup>";
   }
   if(sel.dataset.sig!==h){sel.innerHTML=h;sel.dataset.sig=h}
   if(who!=="manager"&&!byId(who)) who="manager";
@@ -199,6 +201,7 @@ function staffView(id){
   const me=byId(id), a=avail[id], p=staffParse[id];
   let h=`<h2>سلام ${esc(me.name)}</h2>`;
   if(me.role==="insurance") return h+insuranceTab();
+  if(me.role==="lab") return h+LAB.portal(id);
   h+=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+myRequestsPanel(id);
   const ms=myShifts(id);
   if(ms){
@@ -206,7 +209,7 @@ function staffView(id){
       (ms.length?`<ul>${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="note">در این برنامه شیفتی برایت نیست.</p>`)+
       (sched.published?`<p class="note" style="margin:8px 0 4px">برنامه کامل کلینیک:</p><div class="row">${exportBtns()}</div>`:"")+`${exportMsg?`<p class="warn" style="margin-top:8px">${esc(exportMsg)}</p>`:""}</div>`;
   }
-  h+=monthPanel(id)+patientsPanel(id)+patientIntakePanel(id)+apptDoctorPanel(id)+apptAssistantPanel(id)+apptBookingPanel(id)+IMP.staffPanel(id);
+  h+=monthPanel(id)+patientsPanel(id)+patientIntakePanel(id)+apptDoctorPanel(id)+apptAssistantPanel(id)+apptBookingPanel(id)+LAB.staffPanel(id)+IMP.staffPanel(id);
   if(a?.confirmed && !p){
     h+=`<div class="panel"><p class="okline">حضور هفته بعدت ثبت شد.</p>${a.summary?`<p class="note">${esc(a.summary)}</p>`:""}${gridHtml(a.grid,false)}
       <p class="row" style="margin-top:12px"><button class="btn" data-act="staff-redo">تغییر حضور</button></p></div>`;
@@ -554,9 +557,9 @@ function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
-  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
+  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
   let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
-  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
+  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
 /* ---------- monthly report ---------- */
@@ -584,10 +587,10 @@ function reportTab(){
   return h+`</tbody></table></div>`;
 }
 
-function missingList(){return (cfg.staff||[]).filter(s=>s.role!=="insurance"&&!avail[s.id]?.confirmed)}
+function missingList(){return (cfg.staff||[]).filter(s=>s.role!=="insurance"&&s.role!=="lab"&&!avail[s.id]?.confirmed)}
 
 function schedTab(){
-  const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance").length;
+  const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance"&&s.role!=="lab").length;
   const openAl=!!sched&&((sched.alerts||[]).some(a=>!a.resolved));
   let h=sched?requestsPanel()+(openAl?alertsPanel():""):"";
   h+=`<div class="panel">
@@ -784,8 +787,8 @@ async function ruleApply(){
 
 function staffTab(){
   let h=`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
-  for(const r of ["doctor","assistant","reception","insurance"]){
-    h+=`<p style="margin:12px 0 6px"><strong>${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}</strong></p>`;
+  for(const r of ["doctor","assistant","reception","insurance","lab"]){
+    h+=`<p style="margin:12px 0 6px"><strong>${r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها"}</strong></p>`;
     for(const s of ofRole(r)) h+=`<div class="staffrow"><span class="tag">${ROLEN[r]}</span><input type="text" data-name="${s.id}" value="${esc(nameDraft[s.id]??s.name)}" aria-label="نام">${r==="doctor"?`<select data-spec="${s.id}" aria-label="تخصص">${SPECS.map(x=>`<option ${(specDraft[s.id]??s.specialty)===x?"selected":""}>${x}</option>`).join("")}</select>`:""}<button class="x" data-rm="${s.id}" aria-label="حذف ${esc(s.name)}">${rmArm===s.id?"مطمئنید؟ حذف کامل":"حذف"}</button></div>`;
   }
   return h+`<p class="row" style="margin-top:12px"><button class="btn primary" data-act="save-names">ذخیره نام‌ها</button></p></div>`;
@@ -1782,7 +1785,7 @@ function renderPatientSheet(){
       <label class="row" style="gap:6px;align-items:flex-start"><input type="checkbox" data-tog="${it.id}" ${it.status==="done"?"checked":""}><span style="color:${it.status==="done"?"var(--ok)":"var(--warn)"};${it.status==="done"?"text-decoration:line-through":"font-weight:600"}">${planItemLabel(it)}</span></label>
       <span class="row" style="gap:6px"><input type="number" min="0" step="1000" data-price="${it.id}" value="${it.price||""}" placeholder="قیمت (تومان)" style="width:120px"><button class="x" data-delitem="${it.id}">حذف</button></span>
     </div>`).join("")||`<p class="note">هنوز کاری برای این بیمار ثبت نشده.</p>`;
-  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${exportRow}${info}<div class="clean">${rows}</div>
+  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${exportRow}${info}${LAB.sheetPanel(p)}<div class="clean">${rows}</div>
     <div style="margin-top:12px">`;
   if(canEditPlan){
     if(patDraft.pending){
@@ -2025,13 +2028,23 @@ async function patApplyRun(){
   renderPatientSheet();
 }
 function patientsTab(){
-  const q=NLU.norm(patSearch||"");
-  const rows=Object.entries(patients).filter(([,p])=>!q||NLU.norm(p.name).includes(q)).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  const q=NLU.norm(patSearch||""), F=patFilter, planLen=p=>(p.plan||[]).length, left=p=>(p.plan||[]).filter(it=>it.status!=="done").length;
+  const planOk=p=>F.plan===""||(F.plan==="left"?left(p)>0:F.plan==="done"?planLen(p)>0&&left(p)===0:planLen(p)===0);
+  const SORT={new:(a,b)=>b[1].createdAt-a[1].createdAt,name:(a,b)=>a[1].name.localeCompare(b[1].name,"fa"),left:(a,b)=>left(b[1])-left(a[1])||b[1].createdAt-a[1].createdAt};
+  const all=Object.entries(patients), active=!!(q||F.doc||F.plan||F.sort!=="new");
+  const rows=all.filter(([,p])=>(!q||NLU.norm(p.name).includes(q))&&(!F.doc||p.doctor===F.doc)&&planOk(p)).sort(SORT[F.sort]||SORT.new);
+  const opt=(v,l,cur)=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`;
   let h=`<div class="panel"><strong>بیماران</strong>
     <div class="row" style="margin-top:8px"><input type="text" id="patSearchBox" placeholder="جستجوی اسم بیمار…" value="${esc(patSearch)}" style="flex:1 1 160px">
-    <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div></div>`;
-  if(!rows.length) return h+`<div class="panel"><p class="note">${q?"بیماری با این اسم پیدا نشد.":"هنوز بیماری ثبت نشده."}</p></div>`;
-  h+=`<div class="panel"><div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>دکتر</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${rows.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${esc(byId(p.doctor)?.name||"")}</td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div></div>`;
+    <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div>
+    <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+      <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFDoc">دکتر</label><select id="patFDoc" style="width:100%">${opt("","همهٔ دکترها",F.doc)}${ofRole("doctor").map(d=>opt(d.id,esc(d.name),F.doc)).join("")}</select></div>
+      <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFPlan">وضعیت طرح</label><select id="patFPlan" style="width:100%">${opt("","همه",F.plan)}${opt("left","کار باقی‌مانده دارد",F.plan)}${opt("done","همه انجام‌شده",F.plan)}${opt("none","بدون طرح",F.plan)}</select></div>
+      <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFSort">مرتب‌سازی</label><select id="patFSort" style="width:100%">${opt("new","جدیدترین",F.sort)}${opt("name","اسم (الفبا)",F.sort)}${opt("left","بیشترین کار باقی‌مانده",F.sort)}</select></div>
+    </div>
+    ${active?`<p class="row" style="margin-top:8px"><span class="note">${fa(rows.length)} بیمار از ${fa(all.length)}</span><button class="btn quiet" data-act="pat-filter-clear">پاک کردن فیلترها</button></p>`:""}</div>`;
+  if(!rows.length) return h+`<div class="panel"><p class="note">${active?"بیماری با این فیلتر پیدا نشد.":"هنوز بیماری ثبت نشده."}</p></div>`;
+  h+=`<div class="panel"><div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>دکتر</th><th>تاریخ ثبت</th><th>اقلام طرح</th><th>باقی‌مانده</th></tr></thead><tbody>${rows.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${esc(byId(p.doctor)?.name||"")}</td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa(planLen(p))}</td><td>${fa(left(p))}</td></tr>`).join("")}</tbody></table></div></div>`;
   return h;
 }
 
@@ -2210,6 +2223,7 @@ function bind(){
   const aptm=$("#apTime"); if(aptm) aptm.oninput=e=>apptDraft.time=e.target.value;
   const apnt=$("#apNote"); if(apnt) apnt.oninput=e=>apptDraft.note=e.target.value;
   document.querySelectorAll("[data-apst]").forEach(b=>b.onclick=async()=>{const [id,st]=b.dataset.apst.split("|");b.disabled=true;await apptSetStatus(id,st)});
+  for(const [id,k] of [["patFDoc","doc"],["patFPlan","plan"],["patFSort","sort"]]){ const el=$("#"+id); if(el) el.onchange=e=>{patFilter[k]=e.target.value;render()}; }
   const psb=$("#patSearchBox"); if(psb) psb.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();patSearch=e.target.value.trim();render()}};
   const ian=$("#intakeName"); if(ian) ian.oninput=e=>patDraft.iName=e.target.value;
   document.querySelectorAll('[data-pfroot="i"] [data-pf]').forEach(el=>{el.oninput=el.onchange=()=>{patDraft.pf=PF.read("i")}});
@@ -2333,4 +2347,5 @@ async function act(a,btn){
   if(a==="clinic-name-save") return clinicNameSave();
   if(a==="pat-search"){patSearch=($("#patSearchBox")?.value||"").trim();return render()}
   if(a==="pat-search-clear"){patSearch="";return render()}
+  if(a==="pat-filter-clear"){patSearch="";patFilter={doc:"",plan:"",sort:"new"};return render()}
 }
