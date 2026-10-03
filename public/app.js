@@ -994,7 +994,7 @@ function staffDemoPanel(){
   const n=r=>ofRole(r).length;
   return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض همان تعداد فعلی است). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}</div>
-    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
+    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
 }
 async function staffDemoRun(){
   const want={doctor:+demoCount("sd",ofRole("doctor").length)||0,assistant:+demoCount("sa",ofRole("assistant").length)||0,reception:+demoCount("sr",ofRole("reception").length)||0};
@@ -1002,20 +1002,44 @@ async function staffDemoRun(){
   const c=structuredClone(cfg), before=new Set(c.staff.map(x=>x.id)), actions=[];
   for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
   const next=applyRuleActions(c,actions);
-  const fresh=next.staff.filter(x=>!before.has(x.id));
+  const fresh=next.staff.filter(x=>!before.has(x.id)); fresh.forEach(x=>x.demo=true);
   const docs=next.staff.filter(x=>x.role==="doctor");
   for(const a of fresh.filter(x=>x.role==="assistant")){ const d=pick(docs); if(d){ next.pairings[d.id]=[...new Set([...(next.pairings[d.id]||[]),a.id])] } }
   await db.doc("clinic/config").set(next);
   for(const s of fresh){
     const g=emptyGrid(), p=s.role==="doctor"?.55:.7;
     for(const [k] of DAYS) for(const [sk] of SHIFTS) g[k][sk]=Math.random()<p;
-    await db.doc("avail/"+s.id).set({staffId:s.id,text:"(داده تست)",grid:g,summary:"حضور تصادفی برای تست",confirmed:true,week:availWeek(),auto:false,updatedAt:Date.now()});
+    await db.doc("avail/"+s.id).set({staffId:s.id,text:"(داده تست)",grid:g,summary:"حضور تصادفی برای تست",confirmed:true,week:availWeek(),auto:false,demo:true,updatedAt:Date.now()});
   }
   demoN={}; staffMsgBad=false; staffMsg=`${fa(fresh.length)} نفر اضافه شد.`; render();
 }
+async function staffDemoClear(){
+  const ids=(cfg.staff||[]).filter(s=>s.demo).map(s=>s.id);
+  if(!ids.length){ staffMsgBad=false; staffMsg="کارمند آزمایشیِ ساخته‌شده با دکمه‌ای در این تب نیست."; return render() }
+  const next=applyRuleActions(cfg,ids.map(id=>({op:"remove_staff",id})));
+  await db.doc("clinic/config").set(next);
+  for(const id of ids){ try{ await db.doc("avail/"+id).delete() }catch(e){} }
+  staffMsgBad=false; staffMsg=`${fa(ids.length)} کارمند آزمایشی پاک شد.`; render();
+}
+async function patientDemoClear(){
+  const ids=Object.entries(patients).filter(([,p])=>p.demo).map(([id])=>id), set=new Set(ids);
+  for(const id of ids){ await db.doc("patients/"+id).delete(); delete patients[id] }
+  let n=0; for(const [id,a] of Object.entries(appts)) if(set.has(a.patientId)){ await db.doc("appointments/"+id).delete(); n++ }
+  patMsg=ids.length?`${fa(ids.length)} بیمار آزمایشی (و ${fa(n)} نوبتشان) پاک شد.`:"بیمار آزمایشیِ ساخته‌شده با این دکمه نیست."; render();
+}
+/* شروع تمیز: همهٔ دادهٔ بالینی؛ کارکنان و تنظیمات دست‌نخورده می‌مانند */
+async function wipeAll(){
+  let n=0;
+  for(const col of ["patients","appointments","lab","implants"]){
+    const q=await db.collection(col).get();
+    for(const d of q.docs){ await db.doc(col+"/"+d.id).delete(); n++ }
+  }
+  patients={}; appts={}; patMsg=`${fa(n)} مورد پاک شد. حالا از صفر شروع می‌کنی.`; render();
+}
 function patientDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض همان تعداد فعلی است). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
-    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",Object.keys(patients).length)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button></div>
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",Object.keys(patients).length)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button><button class="btn quiet" data-act="pat-demo-clear">پاک کردن بیماران آزمایشی</button></div>
+    <p class="row" style="margin-top:10px"><button class="btn danger" data-act="wipe-all">شروع تمیز: پاک کردن همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها</button></p>
     ${patMsg?`<p class="okline" style="margin-top:6px">${patMsg}</p>`:""}</div>`;
 }
 async function patientDemoRun(){
@@ -1030,7 +1054,7 @@ async function patientDemoRun(){
       plan.push({id:"pi"+uid()+k,tooth,arch:null,tx,label,text:label+(tooth?" دندان "+tooth:""),status:done?"done":"pending",price:done?pick([300000,500000,800000,1500000]):0,addedAt:Date.now()-k*864e5,doneAt:done?Date.now():null});
     }
     const id="p"+uid(), ins=pick([["تامین‌اجتماعی",50e6],["بیمهٔ ملی",40e6],["رازی",60e6],["آزاد",null]]);
-    const p=PF.demo({id,doctor:d.id,name:demoName(),createdAt:Date.now()-i*1000,plan,insurance:{name:ins[0],cap:ins[1]}});
+    const p=PF.demo({id,demo:true,doctor:d.id,name:demoName(),createdAt:Date.now()-i*1000,plan,insurance:{name:ins[0],cap:ins[1]}});
     await db.doc("patients/"+id).set(p); patients[id]=p;
   }
   demoN={}; patMsg=`${fa(n)} بیمار آزمایشی با پروندهٔ کامل ساخته شد.`; render();
@@ -2656,6 +2680,9 @@ async function act(a,btn){
   if(a==="clinic-name-save") return clinicNameSave();
   if(a==="pat-search"){patSearch=($("#patSearchBox")?.value||"").trim();return render()}
   if(a==="pat-search-clear"){patSearch="";return render()}
+  if(a==="staff-demo-clear"){btn.disabled=true;return staffDemoClear()}
+  if(a==="pat-demo-clear"){btn.disabled=true;return patientDemoClear()}
+  if(a==="wipe-all"){ if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="مطمئنی؟ همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها پاک می‌شود. دوباره بزن";return} btn.disabled=true; return wipeAll() }
   if(a==="staff-demo"){btn.disabled=true;return staffDemoRun()}
   if(a==="pat-demo-new"){btn.disabled=true;return patientDemoRun()}
   if(a==="pat-demo-fill"){
