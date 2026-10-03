@@ -183,7 +183,7 @@ const LAB = (() => {
   const SBTN = { inlab: "دریافت شد", ready: "آماده شد", received: "رسید", delivered: "تحویل شد" };
   const who_ = id => id === "manager" ? "مدیر مجموعه" : nm(id);
   const cls = st => st === "delivered" ? "assistant" : st === "ready" || st === "received" ? "reception" : "doctor";
-  const oneLine = o => { const note = String(o.note || "").split("\n")[0].trim(), cut = note.length > 26 ? note.slice(0, 26) + "…" : note; return o.kind + (cut ? " · " + cut : "") + ((o.files || []).length ? " · " + fa(o.files.length) + " پیوست" : ""); };
+  const oneLine = o => o.kind; // در جدول فقط عنوان کار؛ توضیح و پیوست داخل جزئیات سفارش است
   function actions(o, small) {
     const r = role(), nx = nextOf(o.status), pv = prevOf(o.status), canDel = r === "manager" || (o.createdBy === who && o.status === "sent");
     const st = small ? ' style="padding:4px 8px;font-size:.8rem"' : "", lab = t => small ? SBTN[t] : BTN[t];
