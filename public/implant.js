@@ -50,12 +50,12 @@ const IMP = (() => {
   const moneyInput = (id, val, ph) => `<input type="text" inputmode="numeric" dir="ltr" id="${id}" data-money value="${esc(val)}" placeholder="${esc(ph || "مثال: 100,000,000")}" autocomplete="off" style="text-align:left">
     <div class="note imp-words" data-words-for="${id}">${parseMoney(val) ? esc(words(parseMoney(val))) + " تومان" : "مبلغ به تومان"}</div>`;
   function wireMoney(root) {
-    root.querySelectorAll("[data-money]").forEach(i => i.addEventListener("input", () => {
+    root.querySelectorAll("[data-money]").forEach(i => { if (i._mw) return; i._mw = 1; i.addEventListener("input", () => {
       const n = parseMoney(i.value), end = i.value.length - i.selectionEnd;
       i.value = n ? commas(n) : "";
       const pos = Math.max(0, i.value.length - end); try { i.setSelectionRange(pos, pos); } catch (e) {}
       const w = root.querySelector(`[data-words-for="${i.id}"]`); if (w) w.textContent = n ? words(n) + " تومان" : "مبلغ به تومان";
-    }));
+    }); });
   }
 
   /* ---------- dates ---------- */
@@ -404,8 +404,9 @@ const IMP = (() => {
   }
 
   /* ---------- tab bindings ---------- */
+  /* ریشه کل سند است تا دکمه‌های ایمپلنت داخل برگهٔ تمام‌صفحهٔ پورتال (بیرون از #app) هم کار کنند */
   function bind() {
-    const app = $("#app"); if (!app) return;
+    const app = document; if (!$("#app")) return;
     wireMoney(app);
     app.querySelectorAll("[data-imp-open]").forEach(b => b.onclick = () => openCase(b.dataset.impOpen));
     app.querySelectorAll("[data-imp-view]").forEach(b => b.onclick = () => { view = b.dataset.impView; msg = ""; err = ""; render(); });

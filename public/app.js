@@ -307,8 +307,8 @@ function availNotice(){
 function staffPages(id){
   const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
-  add("shifts","برنامهٔ هفتگی",weekCalHtml(id));
   add("me","مشخصات من",selfProfileHtml(id));
+  add("shifts","برنامهٔ هفتگی",weekCalHtml(id));
   const done=availSent(a)&&!p;
   add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done&&availUrgent(),urgent:!done&&availUrgent(),sub:done?"ثبت شد":(availUrgent()?"هنوز نفرستادی":"")});
   add("patients","بیماران من",patientsPanel(id,"list"));
