@@ -677,13 +677,76 @@ function feedbackTab(){
   return h;
 }
 
+/* ---------- تقویم مدیر: هفتگی/ماهانه با تعداد نفرات و بیماران هر روز ---------- */
+let mCal={mode:"week",off:0};
+const DAYKEY={6:"sat",0:"sun",1:"mon",2:"tue",3:"wed",4:"thu"};
+function dayInfo(d){
+  const iso=isoOf(d), k=DAYKEY[d.getDay()], docs=new Set(), asst=new Set(), rec=new Set(), shifts=[];
+  if(k&&sched) for(const [sk,sn] of SHIFTS){
+    const sl=sched.slots?.[k+"_"+sk]; if(!sl) continue;
+    const row={sn,pairs:[],rec:[...(sl.reception||[])],free:[...(sl.free||[])]};
+    for(const p of sl.pairs||[]){ if(p.d) docs.add(p.d); if(p.a) asst.add(p.a); row.pairs.push(p) }
+    row.rec.forEach(x=>rec.add(x)); shifts.push(row);
+  }
+  const list=Object.entries(appts).filter(([,a])=>a.date===iso&&a.status!=="cancelled").sort((a,b)=>(a[1].time||"99").localeCompare(b[1].time||"99"));
+  return {iso,k,docs,asst,rec,shifts,list};
+}
+function calCounts(inf){
+  return `<span class="cc pt">${fa(inf.list.length)} بیمار</span><span class="cc">${fa(inf.docs.size)} دکتر</span><span class="cc">${fa(inf.asst.size)} دستیار</span><span class="cc">${fa(inf.rec.size)} منشی</span>`;
+}
+function calendarTab(){
+  const base=new Date(); base.setHours(12,0,0,0); const todayIso=isoOf(base);
+  let title="", body="";
+  if(mCal.mode==="week"){
+    const d0=new Date(base); const diff=(d0.getDay()+1)%7; d0.setDate(d0.getDate()+(diff===6?1:-diff)+7*mCal.off);
+    const d5=new Date(d0); d5.setDate(d5.getDate()+5);
+    const j=d=>{const [,m,dd]=gregorianToJalali(d.getFullYear(),d.getMonth()+1,d.getDate());return fa(dd)+" "+PERSIAN_MONTHS[m-1]};
+    title=`${j(d0)} تا ${j(d5)}`;
+    body=`<div class="calgrid week">`+DAYS.map(([,dn],i)=>{
+      const d=new Date(d0); d.setDate(d.getDate()+i); const inf=dayInfo(d);
+      return `<button class="calcell ${inf.iso===todayIso?"today":""}" data-cal-day="${inf.iso}"><strong>${dn}</strong><span class="note">${j(d)}</span>${calCounts(inf)}</button>`;
+    }).join("")+`</div>`;
+  }else{
+    let [jy,jm]=todayJalali(); jm+=mCal.off; while(jm>12){jm-=12;jy++} while(jm<1){jm+=12;jy--}
+    title=`${PERSIAN_MONTHS[jm-1]} ${Number(jy).toLocaleString("fa-IR",{useGrouping:false})}`;
+    const len=jalaliMonthLength(jy,jm), [gy,gm,gd]=jalaliToGregorian(jy,jm,1), first=(new Date(gy,gm-1,gd).getDay()+1)%7;
+    let cells=Array(first).fill(`<div class="calcell empty"></div>`);
+    for(let i=1;i<=len;i++){
+      const [y,m,dd]=jalaliToGregorian(jy,jm,i), d=new Date(y,m-1,dd,12), inf=dayInfo(d);
+      if(!DAYKEY[d.getDay()]){ cells.push(`<div class="calcell off"><strong>${fa(i)}</strong></div>`); continue; }
+      cells.push(`<button class="calcell ${inf.iso===todayIso?"today":""}" data-cal-day="${inf.iso}"><strong>${fa(i)}</strong>${inf.list.length?`<span class="cc pt">${fa(inf.list.length)}</span>`:""}<span class="note mini">${fa(inf.docs.size)}د ${fa(inf.asst.size)}ی ${fa(inf.rec.size)}م</span></button>`);
+    }
+    body=`<div class="calgrid month"><div class="calhd">${DAYS.map(([,n])=>`<span>${n}</span>`).join("")}<span>جمعه</span></div>${cells.join("")}</div><p class="note">در هر خانه: تعداد بیمار، و دکتر/دستیار/منشی حاضر (د، ی، م).</p>`;
+  }
+  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+    <span class="row"><button class="btn ${mCal.mode==="week"?"primary":"quiet"}" data-act="mc-week">هفتگی</button><button class="btn ${mCal.mode==="month"?"primary":"quiet"}" data-act="mc-month">ماهانه</button></span>
+    <span class="row"><button class="btn quiet" data-act="mc-prev" aria-label="قبلی">›</button><strong>${title}</strong><button class="btn quiet" data-act="mc-next" aria-label="بعدی">‹</button><button class="btn quiet" data-act="mc-today">امروز</button></span></div>
+    ${sched?"":'<p class="note">هنوز برنامهٔ شیفتی ساخته نشده؛ فقط بیماران دیده می‌شوند.</p>'}</div>${body}
+    <p class="note">حضور کارکنان بر اساس برنامهٔ شیفتِ فعلی است و هر هفته تکرار می‌شود؛ بیماران بر اساس نوبت‌های همان تاریخ.</p>`;
+}
+function openCalDay(iso){
+  const [y,m,dd]=iso.split("-").map(Number), d=new Date(y,m-1,dd,12), inf=dayInfo(d);
+  const [jy,jm,jd]=gregorianToJalali(y,m,dd), dn=(DAYS.find(([k])=>k===inf.k)||[])[1]||"";
+  const stl={scheduled:"",done:" ✓ آمد",noshow:" ✗ نیامد"};
+  const sh=inf.shifts.length?inf.shifts.map(r=>`<div style="border-top:1px solid var(--line);padding:8px 0"><strong>${r.sn}</strong>
+    ${r.pairs.map(p=>`<div>${esc(nm(p.d))} <span class="note">${p.u?"یونیت "+fa(p.u)+"، ":""}دستیار:</span> ${p.a?esc(nm(p.a)):"—"}</div>`).join("")}
+    ${r.rec.length?`<div><span class="note">منشی:</span> ${r.rec.map(x=>esc(nm(x))).join("، ")}</div>`:""}
+    ${r.free.length?`<div class="note">آنکال: ${r.free.map(x=>esc(nm(x))).join("، ")}</div>`:""}</div>`).join(""):`<p class="note">برای این روز شیفتی در برنامه نیست.</p>`;
+  const byDoc={}; inf.list.forEach(([id,a])=>(byDoc[a.doctor]=byDoc[a.doctor]||[]).push([id,a]));
+  const pts=inf.list.length?Object.entries(byDoc).map(([doc,rows])=>`<div style="border-top:1px solid var(--line);padding:8px 0"><strong>${esc(nm(doc))}</strong> <span class="note">(${fa(rows.length)} بیمار)</span>
+    ${rows.map(([,a])=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>${a.time?`<span class="note">${esc(a.time)}</span> `:""}${esc(a.name)}${a.note?` <span class="note">— ${esc(a.note)}</span>`:""}<span class="note">${stl[a.status]||""}</span></span>${a.patientId&&patients[a.patientId]?`<button class="btn quiet" data-pat="${a.patientId}" style="padding:2px 8px">پرونده</button>`:""}</div>`).join("")}</div>`).join(""):`<p class="note">نوبتی ثبت نشده.</p>`;
+  Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>${dn} ${fa(jd)} ${PERSIAN_MONTHS[jm-1]}</strong></div>
+    <div class="panel">${calCounts(inf)}</div>
+    <div class="panel"><strong>حاضران</strong>${sh}</div><div class="panel"><strong>بیماران</strong>${pts}</div>`,null,{page:true,kind:"calday"});
+  bind();
+}
 function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
-  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
+  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["calendar","تقویم"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
   let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
-  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
+  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="calendar"?calendarTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
 /* ---------- monthly report ---------- */
@@ -2361,6 +2424,7 @@ function bind(){
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
   document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>openStaffPage(b.dataset.page));
+  document.querySelectorAll("[data-cal-day]").forEach(b=>b.onclick=()=>openCalDay(b.dataset.calDay));
   const npn=$("#newPatName"); if(npn) npn.oninput=e=>patDraft.name=e.target.value;
   const npt=$("#newPatText"); if(npt) npt.oninput=e=>patDraft.text=e.target.value;
   const inn=$("#invName"); if(inn) inn.oninput=e=>invDraft.name=e.target.value;
@@ -2417,6 +2481,9 @@ async function act(a,btn){
   if(a==="staff-back"){delete staffParse[who];return render()}
   if(a==="staff-redo"){staffDraft[who]=avail[who]?.text||"";staffParse[who]=null;delete staffParse[who];
     await db.doc("avail/"+who).update({confirmed:false,editingAt:Date.now()});return}
+  if(a==="mc-week"||a==="mc-month"){mCal.mode=a.slice(3);mCal.off=0;return render()}
+  if(a==="mc-prev"||a==="mc-next"){mCal.off+=a==="mc-prev"?-1:1;return render()}
+  if(a==="mc-today"){mCal.off=0;return render()}
   if(a==="cal-0"||a==="cal-1"){calWeek=+a.slice(4);return render()}
   if(a==="req-parse") return reqParseRun();
   if(a==="req-apply") return reqApply();

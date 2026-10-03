@@ -226,3 +226,15 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .calweek tr.today{background:var(--bg);outline:2px solid var(--accent)}
 .tile.urgent{background:var(--warn-bg);border:2px solid var(--warn);color:var(--warn)}
 .tile.urgent small{color:var(--warn)}
+.calgrid{display:grid;gap:8px;margin:10px 0}
+.calgrid.week{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.calcell{display:flex;flex-direction:column;gap:3px;align-items:flex-start;padding:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;text-align:start;cursor:pointer;font:inherit}
+.calcell.today{outline:2px solid var(--accent)}
+.calcell.empty{border:0;background:none;cursor:default}
+.calcell.off{background:var(--bg);color:var(--muted);cursor:default}
+.cc{font-size:.8rem;color:var(--muted)}
+.cc.pt{color:var(--accent);font-weight:700}
+.calgrid.month{grid-template-columns:repeat(7,1fr);gap:4px}
+.calgrid.month .calcell{padding:6px 4px;min-height:62px;align-items:center;text-align:center}
+.calgrid.month .mini{font-size:.62rem}
+.calhd{display:contents}.calhd span{text-align:center;font-size:.72rem;color:var(--muted)}
