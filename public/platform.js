@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.12.0";
+const APP_VERSION = "2.13.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */

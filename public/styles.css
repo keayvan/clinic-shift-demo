@@ -86,7 +86,9 @@ table.av th,table.av td{border-bottom:1px solid var(--line);padding:6px 4px;text
 table.av th:first-child,table.av td:first-child{text-align:start;white-space:nowrap}
 .dot{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--line)}
 .dot.on{background:var(--ast)}
-.rolehead td{background:var(--bg);font-weight:700;color:var(--muted)}
+.rolehead td{background:var(--bg);font-weight:800;color:var(--ink);border-inline-start:4px solid var(--accent)}
+.cathead{font-weight:800;font-size:1.05rem;margin:18px 0 8px;padding:6px 10px;background:var(--bg);border-inline-start:4px solid var(--accent);border-radius:4px}
+#whoSel optgroup{font-weight:800;font-style:normal}
 
 .rule{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
 .rule:last-child{border-bottom:0}

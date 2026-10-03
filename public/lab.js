@@ -61,6 +61,31 @@ const LAB = (() => {
     if (!(role() === "manager" || (o.createdBy === who && o.status === "sent"))) return;
     await db.doc("lab/" + id).delete();
   }
+  /* داده‌های آزمایشی: چند سفارش در همهٔ مرحله‌ها تا کارکرد لابراتوار دیده شود؛ با demo:true علامت می‌خورند و پاک‌شدنی‌اند */
+  const DEMO_PEOPLE = ["علی رضایی", "مریم حسینی", "رضا کریمی", "نگار احمدی", "حسین موسوی", "سارا نوری", "امیر صادقی", "زهرا جعفری", "پویا محمدی", "لیلا اکبری"];
+  const DEMO_PLAN = [["sent", "روکش", 0, "رنگ A2، دندان ۱۶", 7], ["sent", "ونیر", 0, "شش دندان جلو، رنگ B1", 10], ["inlab", "دنچر", 1, "دنچر کامل بالا", 9],
+    ["inlab", "بریج / پروتز ثابت", 2, "بریج سه‌واحدی ۲۴ تا ۲۶", 6], ["ready", "اباتمنت و پروتز ایمپلنت", 3, "اباتمنت ایمپلنت ۳۶", 3], ["ready", "نایت‌گارد", 4, null, 2],
+    ["received", "روکش", 5, "رنگ A3 دندان ۱۱؛ منتظر نوبت تحویل", 1], ["received", "ترمیم و تعمیر", 6, "شکستگی دنچر پایین", null],
+    ["delivered", "نگهدارنده و ارتودنسی", 9, "ریتینر بالا و پایین", null], ["delivered", "روکش", 12, "رنگ A2 دندان ۲۵", null]];
+  function jalaliIn(days) {
+    try { const d = new Date(Date.now() + days * 864e5), [y, m, dd] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate()); return fa(`${y}/${String(m).padStart(2, "0")}/${String(dd).padStart(2, "0")}`); } catch (e) { return null; }
+  }
+  async function seedDemo() {
+    const docs = ofRole("doctor"), recs = ofRole("reception"), lab = ofRole("lab")[0]; if (!docs.length) return;
+    const pats = Object.values(patients), day = 864e5, now = Date.now();
+    for (let i = 0; i < DEMO_PLAN.length; i++) {
+      const [st, kind, ago, note, dueIn] = DEMO_PLAN[i], idx = ORDER.indexOf(st);
+      const pat = pats.length ? pats[(i * 3) % pats.length] : null;
+      const doctor = pat?.doctor || docs[i % docs.length].id, name = pat?.name || DEMO_PEOPLE[i % DEMO_PEOPLE.length];
+      const age = ago ? ago * day : 3 * 36e5, created = now - age - (i % 4) * 36e5;
+      const clinicBy = recs.length ? recs[i % recs.length].id : doctor;
+      const by = s => (s === "sent" ? clinicBy : s === "inlab" || s === "ready" ? (lab?.id || "l1") : s === "received" ? clinicBy : doctor);
+      const log = ORDER.slice(0, idx + 1).map((s, k) => ({ s, at: Math.round(created + age * k / (idx + 1)), by: by(s) }));
+      const id = "demo-" + uid();
+      await db.doc("lab/" + id).set({ id, demo: true, patientName: name, patientId: pat ? pat.id : null, doctor, kind, note, due: dueIn ? jalaliIn(dueIn) : null, createdBy: clinicBy, createdAt: created, status: st, log });
+    }
+  }
+  async function clearDemo() { for (const o of list().filter(x => x.demo)) await db.doc("lab/" + o.id).delete(); }
   function refresh() { try { render(); if (patDraft.openId && !$("#sheet").hidden) renderPatientSheet(); } catch (e) { } }
 
   /* ---------- فرم سفارش ---------- */
@@ -115,7 +140,9 @@ const LAB = (() => {
         <div style="flex:1 1 130px"><label class="note" style="display:block" for="labfQ">اسم بیمار</label><input type="text" id="labfQ" data-labf="labfQ" style="width:100%;box-sizing:border-box" value="${esc(flt.q)}"></div>
       </div></div>
       <div class="panel">${rows.length ? rows.map(card).join("") : `<p class="note">${list().length ? "موردی با این فیلتر نیست." : "هنوز کاری برای لابراتوار ثبت نشده."}</p>`}</div>
-      <div class="panel"><strong>سفارش تازه برای لابراتوار</strong><div style="margin-top:8px">${form("m")}</div></div>`;
+      <div class="panel"><strong>سفارش تازه برای لابراتوار</strong><div style="margin-top:8px">${form("m")}</div></div>
+      <div class="panel"><strong>داده‌های آزمایشی</strong><p class="note" style="margin:4px 0 8px">برای دیدن کارکرد لابراتوار، چند سفارش در مرحله‌های مختلف می‌سازد (${fa(list().filter(o => o.demo).length)} سفارش آزمایشی الان هست). بعداً با «پاک کردن» همه‌شان برداشته می‌شود و سفارش‌های واقعی دست نمی‌خورند.</p>
+        <p class="row"><button class="btn" data-lab="demo">ساخت چند سفارش آزمایشی</button><button class="btn quiet" data-lab="demo-clear">پاک کردن سفارش‌های آزمایشی</button></p></div>`;
   }
 
   /* ---------- پورتال لابراتوار (دلارام) ---------- */
@@ -166,9 +193,11 @@ const LAB = (() => {
         if (b.dataset.lab === "new") await create(b.dataset.form);
         else if (b.dataset.lab === "step") await move(b.dataset.id, b.dataset.to);
         else if (b.dataset.lab === "del") await remove(b.dataset.id);
+        else if (b.dataset.lab === "demo") await seedDemo();
+        else if (b.dataset.lab === "demo-clear") await clearDemo();
       } finally { b.disabled = false; }
     });
   }
-  return { start, tab, portal, staffPanel, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, STATUS, KINDS } };
+  return { start, tab, portal, staffPanel, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, STATUS, KINDS, DEMO_PLAN } };
 })();
 if (typeof globalThis !== "undefined") globalThis.LAB = LAB;

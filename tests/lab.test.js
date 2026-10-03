@@ -1,6 +1,6 @@
 // Run: node tests/lab.test.js  — منطق لابراتوار (public/lab.js)
 require("../public/lab.js");
-const { nextOf, prevOf, canMoveFor, normalize, STATUS, KINDS } = globalThis.LAB._t;
+const { nextOf, prevOf, canMoveFor, normalize, STATUS, KINDS, DEMO_PLAN } = globalThis.LAB._t;
 let pass = 0, fail = 0;
 function eq(name, got, want) {
   const ok = JSON.stringify(got) === JSON.stringify(want);
@@ -35,6 +35,10 @@ eq("trims", [ok.patientName, ok.note, ok.due, ok.kind, ok.createdBy], ["علی",
 eq("unknown kind falls back", normalize({ patient: "ب", doctor: "d1", kind: "هر چیزی" }, "d1").ok.kind, KINDS[0]);
 eq("empty note is null", normalize({ patient: "ب", doctor: "d1", note: "  " }, "d1").ok.note, null);
 eq("long input is cut", normalize({ patient: "x".repeat(500), doctor: "d1", note: "y".repeat(900) }, "d1").ok.patientName.length, 80);
+
+// داده‌های آزمایشی همهٔ مرحله‌ها و فقط نوع کارهای معتبر را پوشش می‌دهند
+for (const [st] of STATUS) eq("demo covers " + st, DEMO_PLAN.some(x => x[0] === st), true);
+eq("demo kinds valid", DEMO_PLAN.every(x => KINDS.includes(x[1])), true);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
