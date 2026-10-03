@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.11.0";
+const APP_VERSION = "2.12.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -235,14 +235,20 @@ async function saveFile({ filename, data }) {
 
 /* ---------- feedback & developer logging ---------- */
 const FB = (() => {
-  const QK = NS + "fb/queue", AK = NS + "fb/archive", DK = NS + "device";
+  const QK = NS + "fb/queue", AK = NS + "fb/archive", DK = NS + "device", UK = NS + "user";
   const get = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch (e) { return []; } };
   const put = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
   let device = localStorage.getItem(DK); if (!device) { device = Math.random().toString(36).slice(2, 10); try { localStorage.setItem(DK, device); } catch (e) {} }
+  /* اسم کاربری: هر کس بار اول یکی انتخاب می‌کند و کنار همهٔ نظرها و گزارش‌هایش ثبت می‌شود */
+  const cleanUser = s => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, 30);
+  const userOk = s => { const n = cleanUser(s); return n.length >= 2 && /[A-Za-z\u0600-\u06FF]/.test(n) ? n : null; };
+  let userName = ""; try { userName = cleanUser(localStorage.getItem(UK)); } catch (e) {}
+  const user = () => userName;
+  const setUser = n => { const c = userOk(n); if (!c) return null; userName = c; try { localStorage.setItem(UK, c); } catch (e) {} return c; };
   const trail = [];
   const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   function push(ev) {
-    const e = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), v: APP_VERSION, device, role: typeof who !== "undefined" ? who : null, tab: typeof tab !== "undefined" ? tab : null, standalone: standalone(), ...ev };
+    const e = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), at: Date.now(), v: APP_VERSION, device, user: userName || null, role: typeof who !== "undefined" ? who : null, tab: typeof tab !== "undefined" ? tab : null, standalone: standalone(), ...ev };
     const q = get(QK); q.push(e); put(QK, q.slice(-500));
     const a = get(AK); a.push(e); put(AK, a.slice(-300));
     Shell.badge(); flush();
@@ -279,9 +285,9 @@ const FB = (() => {
         if (e.type === "nlu_correction") return `• [${lab.nlu_correction}] «${e.text}»\n  (${t})`;
         return `• [${lab.error}] ${e.msg}\n  (${t})`;
       });
-      return `بازخورد دموی شیفت کلینیک (نسخه ${APP_VERSION}، دستگاه ${device})\n\n` + (rows.join("\n") || "هنوز موردی ثبت نشده.");
+      return `بازخورد دموی شیفت کلینیک (نسخه ${APP_VERSION}، دستگاه ${device}${userName ? "، کاربر " + userName : ""})\n\n` + (rows.join("\n") || "هنوز موردی ثبت نشده.");
     },
-    standalone
+    standalone, user, setUser, userOk
   };
 })();
 addEventListener("error", e => FB.error(e.message, (e.filename || "").split("/").pop(), e.lineno));
@@ -296,16 +302,41 @@ const Shell = (() => {
   addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e; banners(); });
   addEventListener("appinstalled", () => { deferred = null; FB.act("installed"); banners(); });
 
-  function sheet(html, onOpen) {
-    const root = $("#sheet");
-    root.innerHTML = `<div class="sheet-back" data-close-sheet></div><div class="sheet-card" role="dialog" aria-modal="true"><button class="sheet-x" data-close-sheet aria-label="بستن">✕</button>${html}</div>`;
+  let locked = false, pendingNews = null;
+  function sheet(html, onOpen, opts) {
+    const root = $("#sheet"); locked = !!(opts && opts.locked);
+    root.innerHTML = `<div class="sheet-back" ${locked ? "" : "data-close-sheet"}></div><div class="sheet-card" role="dialog" aria-modal="true">${locked ? "" : `<button class="sheet-x" data-close-sheet aria-label="بستن">✕</button>`}${html}</div>`;
     root.hidden = false; document.body.style.overflow = "hidden";
     root.querySelectorAll("[data-close-sheet]").forEach(b => b.onclick = close);
     onOpen && onOpen(root);
     const card = root.querySelector(".sheet-card"); card.setAttribute("tabindex", "-1"); card.scrollTop = 0; card.focus({ preventScroll: true });
   }
-  function close() { const r = $("#sheet"); r.hidden = true; r.innerHTML = ""; document.body.style.overflow = ""; }
-  addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden) close(); });
+  function close() { locked = false; const r = $("#sheet"); r.hidden = true; r.innerHTML = ""; document.body.style.overflow = ""; }
+  addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden && !locked) close(); });
+
+  /* اسم کاربری: بار اول (و برای کسانی که اپ را از قبل دارند، بعد از این به‌روزرسانی) اجباری است */
+  const esc = x => String(x ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function askUser(forced) {
+    const cur = FB.user();
+    sheet(`<h2>اسم کاربری</h2>
+      <p class="lead">برای اینکه نظرها و مشکلاتی که می‌فرستی به اسم خودت ثبت شود و بتوانیم دقیق‌تر پیگیری کنیم، یک اسم کاربری انتخاب کن. اسم کوچک یا اسم و فامیل کافی است.</p>
+      <label class="note" for="unameIn">اسم کاربری</label>
+      <input type="text" id="unameIn" maxlength="30" autocomplete="off" value="${esc(cur)}" placeholder="مثلاً: سارا احمدی">
+      <p class="warn" id="unameErr" hidden>اسم باید حداقل ۲ حرف باشد و حرف داشته باشد.</p>
+      <div class="row" style="margin-top:12px"><button class="btn primary" id="unameSave">ذخیره</button>${forced ? "" : `<button class="btn quiet" data-close-sheet>بستن</button>`}</div>
+      <p class="note" style="margin-top:8px">این اسم فقط کنار نظرها و گزارش‌هایی که می‌فرستی دیده می‌شود. بعداً از دکمهٔ «راهنما» می‌توانی عوضش کنی.</p>`, root => {
+      const inp = root.querySelector("#unameIn"), err = root.querySelector("#unameErr");
+      const save = () => {
+        const n = FB.setUser(inp.value);
+        if (!n) { err.hidden = false; inp.focus(); return; }
+        FB.act("username-set"); close();
+        if (!localStorage.getItem(NS + "seenGuide")) guide(true); else if (pendingNews) { const h = pendingNews; pendingNews = null; sheet(h); }
+      };
+      root.querySelector("#unameSave").onclick = save;
+      inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); save(); } };
+      setTimeout(() => inp.focus(), 50);
+    }, { locked: !!forced });
+  }
 
   function banners() {
     const b = $("#banners"); if (!b) return;
@@ -343,7 +374,8 @@ const Shell = (() => {
         <li><strong>خروجی:</strong> PDF یا Excel برنامه را بگیرید.</li>
       </ol>
       <p>هر جا نظری داشتید یا چیزی درست کار نکرد، دکمه <strong>نظر</strong> پایین صفحه را بزنید.</p>
-      <div class="row" style="margin-top:14px"><button class="btn primary" data-close-sheet>${first ? "شروع" : "بستن"}</button><button class="btn quiet" id="resetDemo">شروع دوباره دمو</button></div>`, root => {
+      <div class="row" style="margin-top:14px"><button class="btn primary" data-close-sheet>${first ? "شروع" : "بستن"}</button><button class="btn quiet" id="changeUser">اسم کاربری: ${esc(FB.user() || "—")} (تغییر)</button><button class="btn quiet" id="resetDemo">شروع دوباره دمو</button></div>`, root => {
+      root.querySelector("#changeUser").onclick = () => askUser(false);
       const r = root.querySelector("#resetDemo");
       r.onclick = async () => {
         if (r.dataset.sure !== "1") { r.dataset.sure = "1"; r.textContent = "همه تغییرات پاک شود؟ دوباره بزنید"; return; }
@@ -385,11 +417,12 @@ const Shell = (() => {
     $("#fbBtn").onclick = () => { FB.act("feedback-open"); feedback(); };
     $("#guideBtn").onclick = () => guide(false);
     banners(); badge();
-    if (!localStorage.getItem(NS + "seenGuide")) setTimeout(() => guide(true), 400);
+    if (!FB.user()) setTimeout(() => askUser(true), 400);
+    else if (!localStorage.getItem(NS + "seenGuide")) setTimeout(() => guide(true), 400);
     const last = localStorage.getItem(NS + "lastVersion");
     if (last && last !== APP_VERSION) fetch("changelog.json").then(r => r.json()).then(cl => {
       const items = (cl.find(x => x.version === APP_VERSION) || {}).changes || [];
-      if (items.length) sheet(`<h2>چه چیزهایی عوض شد</h2><p class="note">نسخه ${APP_VERSION}</p><ul>${items.map(i => `<li>${i}</li>`).join("")}</ul><div class="row"><button class="btn primary" data-close-sheet>متوجه شدم</button></div>`);
+      if (items.length) { const h = `<h2>چه چیزهایی عوض شد</h2><p class="note">نسخه ${APP_VERSION}</p><ul>${items.map(i => `<li>${i}</li>`).join("")}</ul><div class="row"><button class="btn primary" data-close-sheet>متوجه شدم</button></div>`; if (locked || !FB.user()) pendingNews = h; else sheet(h); }
     }).catch(() => {});
     localStorage.setItem(NS + "lastVersion", APP_VERSION);
     if ("serviceWorker" in navigator && location.protocol !== "file:") {

@@ -70,7 +70,7 @@ function cleanEvent(e) {
   if (!e || typeof e !== "object") return null;
   const type = ["feedback", "nlu_miss", "nlu_ok", "nlu_correction", "error"].includes(e.type) ? e.type : null;
   if (!type) return null;
-  const out = { id: clip(String(e.id || ""), 40), type, at: +e.at || Date.now(), v: clip(String(e.v || ""), 20), device: clip(String(e.device || ""), 20),
+  const out = { id: clip(String(e.id || ""), 40), type, at: +e.at || Date.now(), v: clip(String(e.v || ""), 20), device: clip(String(e.device || ""), 20), user: clip(e.user == null ? null : String(e.user), 40),
     role: clip(e.role == null ? null : String(e.role), 20), tab: clip(e.tab == null ? null : String(e.tab), 20), standalone: !!e.standalone, receivedAt: Date.now() };
   for (const k of ["kind", "text", "msg", "src"]) if (e[k] != null) out[k] = clip(String(e[k]), 2000);
   if (e.line != null) out.line = +e.line || 0;
@@ -186,7 +186,7 @@ function adminPage(q) {
     else if (e.type === "nlu_correction") what = `<b>${escH(e.kind)}</b>: «${escH(e.text)}» — کاربر برداشت را اصلاح کرد`;
     else if (e.type === "nlu_ok") what = `<b>${escH(e.kind)}</b>: «${escH(e.text)}»`;
     else what = `${escH(e.msg)} <span class="m">${escH(e.src || "")}:${e.line || ""}</span>`;
-    return `<tr class="t-${e.type}"><td>${new Date(e.at).toLocaleString("fa-IR", { timeZone: "Asia/Tehran" })}</td><td>${LABEL[e.type]}</td><td>${what}</td><td class="m">${escH(e.role || "-")} / ${escH(e.tab || "-")}<br>v${escH(e.v)} · ${escH(e.device)}${e.standalone ? " · اپ" : " · مرورگر"}</td></tr>`;
+    return `<tr class="t-${e.type}"><td>${new Date(e.at).toLocaleString("fa-IR", { timeZone: "Asia/Tehran" })}</td><td>${LABEL[e.type]}</td><td>${what}</td><td class="m">${escH(e.role || "-")} / ${escH(e.tab || "-")}<br>${e.user ? "<b>" + escH(e.user) + "</b> · " : ""}v${escH(e.v)} · ${escH(e.device)}${e.standalone ? " · اپ" : " · مرورگر"}</td></tr>`;
   };
   const tabs = [["important", "مهم‌ها"], ["feedback", "نظرها"], ["nlu_miss", "نفهمیده‌ها"], ["nlu_correction", "اصلاح‌ها"], ["error", "خطاها"], ["nlu_ok", "فهمیده‌ها"], ["all", "همه"]];
   return `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>داشبورد توسعه‌دهنده</title>
@@ -202,7 +202,7 @@ nav a{display:inline-block;margin:0 0 8px 6px;padding:6px 12px;border-radius:8px
 <div class="wrap"><table><tbody>${list.map(row).join("") || `<tr><td>هنوز موردی نیست.</td></tr>`}</tbody></table></div></body></html>`;
 }
 function csv(events) {
-  const cols = ["at", "type", "kind", "text", "msg", "misses", "rejected", "unclear", "role", "tab", "v", "device", "standalone"];
+  const cols = ["at", "type", "kind", "text", "msg", "misses", "rejected", "unclear", "user", "role", "tab", "v", "device", "standalone"];
   const cell = v => { v = Array.isArray(v) ? v.join(" | ") : v == null ? "" : String(v); return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
   return "\ufeff" + cols.join(",") + "\n" + events.map(e => cols.map(c => cell(c === "at" ? new Date(e.at).toISOString() : e[c])).join(",")).join("\n");
 }
