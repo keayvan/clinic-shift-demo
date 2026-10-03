@@ -2248,7 +2248,8 @@ function apptFormHtml(){
   const monthOpts=PERSIAN_MONTHS.map((n,i)=>`<option value="${i+1}" ${apptDraft.jm===i+1?"selected":""}>${n}</option>`).join("");
   const faYear=y=>Number(y).toLocaleString("fa-IR",{useGrouping:false});
   const yearOpts=[todayJy-1,todayJy,todayJy+1,todayJy+2].map(y=>`<option value="${y}" ${apptDraft.jy===y?"selected":""}>${faYear(y)}</option>`).join("");
-  return `<div class="panel"><strong>نوبت جدید</strong>
+  return `<div class="panel"><strong>داده آزمایشی</strong><p class="note" style="margin:2px 0 6px">چند نوبت تصادفی برای شش‌روز این هفته می‌سازد تا تقویم و «بیماران امروز» را ببینی.</p><p class="row"><button class="btn" data-act="ap-demo">افزودن نوبت‌های آزمایشی این هفته</button><button class="btn quiet" data-act="ap-demo-clear">پاک کردن نوبت‌های آزمایشی</button></p>${apptMsg?`<p class="okline">${apptMsg}</p>`:""}</div>
+  <div class="panel"><strong>نوبت جدید</strong>
     <label class="note" for="apName" style="display:block;margin-top:6px">اسم بیمار</label>
     <input type="text" id="apName" list="apPatList" placeholder="اسم بیمار" value="${esc(apptDraft.name||"")}">
     <datalist id="apPatList">${Object.values(patients).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist>
@@ -2298,6 +2299,30 @@ function apptAssistantPanel(id){
   if(!myDocs.length) return "";
   const rows=apptList(null).filter(([,a])=>myDocs.includes(a.doctor)); if(!rows.length) return "";
   return `<div class="panel"><strong>نوبت‌های دکترهایی که باهاشون کار می‌کنی</strong></div>`+apptsByDateHtml(rows,true);
+}
+async function apptDemo(){
+  const d0=new Date(); d0.setHours(12,0,0,0); const diff=(d0.getDay()+1)%7; d0.setDate(d0.getDate()+(diff===6?1:-diff));
+  const first=["علی","مریم","رضا","زهرا","حسین","سارا","محمد","نرگس","امیر","فاطمه","کامران","لیلا"], last=["محمدی","کریمی","رحیمی","حسینی","نوری","صادقی","جلالی","قاسمی","موسوی","اکبری"];
+  const pick=a=>a[Math.floor(Math.random()*a.length)], notes=["معاینه","جرمگیری","عصب‌کشی","ترمیم","پیگیری","مشاوره",""];
+  let n=0;
+  for(const doc of ofRole("doctor")){
+    const mine=Object.values(patients).filter(p=>p.doctor===doc.id);
+    for(let i=0;i<6;i++){
+      const d=new Date(d0); d.setDate(d.getDate()+i); const date=isoOf(d), used=new Set();
+      const cnt=2+Math.floor(Math.random()*4);
+      for(let j=0;j<cnt;j++){
+        let t; do{ t=String(9+Math.floor(Math.random()*10)).padStart(2,"0")+":"+pick(["00","30"]) }while(used.has(t)); used.add(t);
+        const p=Math.random()<.6&&mine.length?pick(mine):null, id=uid();
+        await db.doc("appointments/"+id).set({id,name:p?p.name:pick(first)+" "+pick(last),patientId:p?p.id:null,doctor:doc.id,date,time:t,note:pick(notes),status:"scheduled",demo:true,createdAt:Date.now()});
+        n++;
+      }
+    }
+  }
+  apptMsg=`${fa(n)} نوبت آزمایشی ساخته شد.`; render();
+}
+async function apptDemoClear(){
+  let n=0; for(const [id,a] of Object.entries(appts)) if(a.demo){ await db.doc("appointments/"+id).delete(); n++; }
+  apptMsg=`${fa(n)} نوبت آزمایشی پاک شد.`; render();
 }
 async function apptAdd(btn){
   const name=($("#apName")?.value||"").trim(), doctor=$("#apDoc")?.value, time=$("#apTime")?.value||"", note=($("#apNote")?.value||"").trim();
@@ -2468,6 +2493,8 @@ async function act(a,btn){
   if(a==="inv-save") return invSave(btn.dataset.id);
   if(a==="inv-del") return invDelete(btn.dataset.id);
   if(a==="ap-add") return apptAdd(btn);
+  if(a==="ap-demo"){btn.disabled=true;return apptDemo()}
+  if(a==="ap-demo-clear"){btn.disabled=true;return apptDemoClear()}
   if(a==="ap-del") return apptDelete(btn.dataset.id);
   if(a==="pay-add") return addPayment();
   if(a==="clinic-name-save") return clinicNameSave();
