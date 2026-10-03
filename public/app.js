@@ -296,7 +296,7 @@ function weekCalHtml(id){
     const n=Object.values(appts).filter(a=>a.date===iso&&a.status!=="cancelled"&&(!docs||docs.includes(a.doctor))).length;
     return `<tr class="${iso===todayIso?"today":""}"><th>${dn}<div class="note">${fa(jd)} ${PERSIAN_MONTHS[jm-1]}</div></th>${cells}<td><strong>${fa(n)}</strong></td></tr>`;
   }).join("");
-  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong>برنامهٔ هفتگی ${calWeek?"(هفتهٔ بعد)":"(این هفته)"} ${sched&&!sched.published?'<span class="note">(پیش‌نویس)</span>':""}</strong>
+  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong>برنامهٔ هفتگی ${calWeek?"(هفتهٔ بعد)":"(این هفته)"} ${sched&&!sched.published?'<span class="note">(پیش‌نویس)</span>':""}${sched?"":'<span class="note">(برنامه هنوز ساخته نشده)</span>'}</strong>
     <span class="row"><button class="btn ${calWeek?"quiet":"primary"}" data-act="cal-0">این هفته</button><button class="btn ${calWeek?"primary":"quiet"}" data-act="cal-1">هفتهٔ بعد</button></span></div>
     <div style="overflow-x:auto;margin-top:8px"><table class="av calweek" style="min-width:0"><thead><tr><th>روز</th><th>صبح</th><th>عصر</th><th>بیمار</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
@@ -307,7 +307,7 @@ function availNotice(){
 function staffPages(id){
   const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
-  add("shifts","برنامهٔ هفتگی",sched?weekCalHtml(id):"");
+  add("shifts","برنامهٔ هفتگی",weekCalHtml(id));
   const done=availSent(a)&&!p;
   add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done&&availUrgent(),urgent:!done&&availUrgent(),sub:done?"ثبت شد":(availUrgent()?"هنوز نفرستادی":"")});
   add("patients","بیماران من",patientsPanel(id,"list"));
@@ -329,7 +329,8 @@ function staffAlerts(id){
 }
 /* شیفت‌های من و بیماران امروز، مستقیم روی صفحهٔ اصلی */
 function myShiftsHome(id){
-  const ms=myShifts(id); if(ms==null) return "";
+  const ms=myShifts(id);
+  if(ms==null) return `<div class="panel"><strong>شیفت‌های من</strong><p class="note" style="margin:6px 0 0">برنامهٔ این هفته هنوز ساخته یا منتشر نشده است.</p></div>`;
   const dn=(DAYS.find(([k])=>k===["sun","mon","tue","wed","thu","fri","sat"][new Date().getDay()])||[])[1];
   const li=ms.map(x=>`<li${dn&&x.startsWith(dn)?' class="today"':""}>${esc(x)}${dn&&x.startsWith(dn)?" <b>(امروز)</b>":""}</li>`).join("");
   return `<div class="panel"><strong>شیفت‌های من ${sched.published?"":`<span class="note">(پیش‌نویس؛ هنوز تأیید نشده)</span>`}</strong>${ms.length?`<ul class="clean shiftlist">${li}</ul>`:`<p class="note" style="margin:6px 0 0">در این برنامه شیفتی برایت نیست.</p>`}</div>`;
@@ -1096,10 +1097,19 @@ function wipePanel(){
 /* تب «داده آزمایشی»: همهٔ ابزارهای ساخت و پاک‌کردن یک‌جا */
 function demoTab(){
   return `<p class="lead">این‌جا برای هر بخش داده آزمایشی بساز یا پاک کن. هر دکمهٔ «پاک کردن» فقط همان داده‌های آزمایشیِ خودش را برمی‌دارد. بیمارهای آزمایشی خودشان چند سفارش لابراتوار و پروندهٔ ایمپلنت هم می‌گیرند.</p>
-    ${staffDemoPanel()}${patientDemoPanel()}${apptDemoPanel()}${LAB.demoPanel()}${inventoryDemoPanel()}${reportDemoPanel()}${wipePanel()}`;
+    ${staffDemoPanel()}${schedDemoPanel()}${patientDemoPanel()}${apptDemoPanel()}${LAB.demoPanel()}${inventoryDemoPanel()}${reportDemoPanel()}${wipePanel()}`;
 }
 function apptDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: نوبت‌ها</strong><p class="note" style="margin:2px 0 6px">برای شنبه تا پنج‌شنبهٔ این هفته، ۲ تا ۵ نوبت تصادفی برای هر دکتر.</p><p class="row"><button class="btn" data-act="ap-demo">افزودن نوبت‌های آزمایشی این هفته</button><button class="btn quiet" data-act="ap-demo-clear">پاک کردن نوبت‌های آزمایشی</button></p></div>`;
+}
+async function schedDemoRun(){
+  const b=buildSchedule(); b.rev=1; b.notices=[{id:uid(),at:Date.now(),to:"all",text:"برنامه هفته منتشر شد."}];
+  b.baseConflicts=checkConflicts(cfg,b).map(x=>x.text); b.published=true; b.publishedAt=Date.now();
+  await db.doc("clinic/schedule").set(b); demoMsg="برنامهٔ شیفت ساخته و منتشر شد."; render();
+}
+function schedDemoPanel(){
+  return `<div class="panel"><strong>داده آزمایشی: برنامهٔ شیفت</strong><p class="note" style="margin:2px 0 6px">از حضورهای ثبت‌شده یک برنامهٔ هفتگی می‌سازد و منتشر می‌کند تا شیفت‌ها در پورتال همه دیده شود (اگر حضور ثبت نشده باشد، اول «افزودن کارکنان آزمایشی» را بزن).</p>
+    <p class="row"><button class="btn" data-act="sched-demo">ساخت و انتشار برنامهٔ شیفت</button></p>${demoMsg?`<p class="okline">${esc(demoMsg)}</p>`:""}</div>`;
 }
 function patientDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض: ترکیب اولیهٔ کلینیک). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
@@ -2765,6 +2775,7 @@ async function act(a,btn){
     await db.doc("clinic/config").set(applyRuleActions(cfg,[{op:"add_staff",name:name.slice(0,40),role,...(role==="doctor"?{specialty:spec}:{})}]));
     staffMsgBad=false; staffMsg=`«${name}» به‌عنوان ${ROLEN[role]} اضافه شد.`; return render();
   }
+  if(a==="sched-demo"){btn.disabled=true;return schedDemoRun()}
   if(a==="staff-demo-clear"){btn.disabled=true;return staffDemoClear()}
   if(a==="pat-demo-clear"){btn.disabled=true;return patientDemoClear()}
   if(a==="wipe-all"){ if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="مطمئنی؟ همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها پاک می‌شود. دوباره بزن";return} btn.disabled=true; return wipeAll() }
