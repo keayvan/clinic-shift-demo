@@ -805,7 +805,7 @@ function missingList(){return (cfg.staff||[]).filter(s=>s.role!=="insurance"&&s.
 function schedTab(){
   const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance"&&s.role!=="lab").length;
   const openAl=!!sched&&((sched.alerts||[]).some(a=>!a.resolved));
-  let h=sched?requestsPanel()+(openAl?alertsPanel():""):"";
+  let h="";
   h+=`<div class="panel">
     <p style="margin:0 0 8px"><strong>${fa(total-miss.length)} از ${fa(total)} نفر</strong> حضور هفته بعد را فرستاده‌اند.</p>
     ${miss.length?`<p class="note" style="margin:0 0 12px">هنوز نفرستاده‌اند: ${miss.map(s=>esc(s.name)).join("، ")}</p>`:""}
@@ -817,10 +817,6 @@ function schedTab(){
   if(!sched) return h+`<p class="note">وقتی حضورها رسید، «ساخت برنامه» را بزنید. برنامه با قوانین بخش «قوانین» چیده می‌شود.</p>`;
   {let used=0,tot=0;for(const k in sched.slots){used+=sched.slots[k].pairs.length;tot+=cfg.settings.chairs}
    h+=`<p><strong>پر بودن یونیت‌ها در هفته: ${fa(Math.round(100*used/Math.max(tot,1)))}٪</strong> <span class="note">(${fa(used)} از ${fa(tot)} یونیت‌شیفت)</span></p>`;}
-  h+=conflictBanner();
-  h+=gapsPanel();
-  if(!openAl) h+=alertsPanel();
-  if(sched.issues?.length) h+=`<div class="panel"><strong>نیاز به توجه</strong><ul class="clean issues">${sched.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`;
   h+=`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
     const sl=sched.slots?.[k+"_"+sk]||{pairs:[],reception:[],free:[]};
     const u=sl.pairs.length,ch=cfg.settings.chairs;
@@ -831,9 +827,13 @@ function schedTab(){
     {const oc=(sl.free||[]).filter(x=>byId(x)); if(oc.length) c+=`<div class="sub"><strong>آنکال</strong> (حضوری نیستند؛ در صورت نیاز خبر می‌شوند): ${oc.map(x=>esc(nm(x))).join("، ")}</div>`;}
     return c+`</div>`;
   }).join("")+`</div></section>`).join("")+`</div>`;
+  h+=conflictBanner();
+  h+=gapsPanel();
+  h+=requestsPanel()+alertsListPanel();
+  if(sched.issues?.length) h+=`<div class="panel"><strong>نیاز به توجه</strong><ul class="clean issues">${sched.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`;
   if(sched.log?.length) h+=`<div class="panel" style="margin-top:16px"><strong>تغییرات بعد از ساخت برنامه</strong><ul class="clean issues">${[...sched.log].reverse().slice(0,15).map(l=>`<li><strong>${l.who==="manager"?"مدیر":esc(nm(l.who))}</strong> <span class="note">${new Date(l.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span><br>${(l.items||[]).map(esc).join("<br>")}</li>`).join("")}</ul></div>`;
   h+=`<p class="note">ساخته شده: ${new Date(sched.generatedAt).toLocaleString("fa-IR")}</p>`;
-  return h;
+  return h+mgrPromptBox();
 }
 
 function availTab(){
@@ -1525,16 +1525,19 @@ async function respondConfirm(cid,yes){
 
 /* ---------- manager alerts & weekly edits ---------- */
 let mgrDraft="", mgrPlan=null, mgrBusy=false, mgrErr="";
-function alertsPanel(){
-  const open=(sched.alerts||[]).filter(a=>!a.resolved);
-  let h=`<div class="panel ${mgrPlan?"pending":""}">`;
-  h+= open.length?`<strong>هشدارها (${fa(open.length)})</strong><p class="note" style="margin:2px 0 6px">سیستم این‌ها را خودش نتوانست حل کند.</p>`+open.map(a=>`<div class="alert"><span>${esc(a.text)}</span><button class="x" data-close="${a.id}">بستن</button></div>`).join("")
-    :`<strong>تغییر برنامه این هفته</strong>`;
+/* فهرست هشدارهای حل‌نشده؛ داخل جریان صفحه، بعد از برنامه */
+function alertsListPanel(){
+  const open=(sched.alerts||[]).filter(a=>!a.resolved); if(!open.length) return "";
+  return `<div class="panel"><strong>هشدارها (${fa(open.length)})</strong><p class="note" style="margin:2px 0 6px">سیستم این‌ها را خودش نتوانست حل کند.</p>`+open.map(a=>`<div class="alert"><span>${esc(a.text)}</span><button class="x" data-close="${a.id}">بستن</button></div>`).join("")+`</div>`;
+}
+/* جعبهٔ دستور مدیر: همیشه ته صفحه می‌چسبد (sticky) تا با اسکرول هم در دسترس باشد */
+function mgrPromptBox(){
+  let h=`<div class="mgrdock ${mgrPlan?"pending":""}">`;
   if(!mgrPlan){
-    h+=`<label for="mgrTxt" class="note" style="display:block;margin-top:10px">دستور شما</label>
-    <textarea id="mgrTxt" placeholder="مثلاً: زهرا اخراج شد. دکتر نوری را سه‌شنبه صبح روی یونیت ۲ بگذار. زهرا دوشنبه عصر دستیار دکتر کریمی باشد. آزاده را پنج‌شنبه عصر در پذیرش بگذار.">${esc(mgrDraft)}</textarea>
+    h+=`<label for="mgrTxt" class="note" style="display:block"><strong>تغییر برنامه این هفته</strong> — دستور را عادی بنویس</label>
+    <textarea id="mgrTxt" style="min-height:44px;margin-top:4px" placeholder="مثلاً: زهرا اخراج شد. دکتر نوری را سه‌شنبه صبح روی یونیت ۲ بگذار.">${esc(mgrDraft)}</textarea>
     ${mgrErr?`<p class="warn">${esc(mgrErr)}</p>`:""}
-    <p class="row" style="margin-top:10px"><button class="btn primary" data-act="mgr-parse" ${mgrBusy||!sample?"disabled":""}>${mgrBusy?"در حال بررسی…":"بررسی"}</button></p>`;
+    <p class="row" style="margin-top:8px"><button class="btn primary" data-act="mgr-parse" ${mgrBusy||!sample?"disabled":""}>${mgrBusy?"در حال بررسی…":"بررسی"}</button></p>`;
   }else{
     const okN=mgrPlan.report.filter(r=>r.ok).length;
     h+=`<p style="margin:10px 0 4px"><strong>نتیجه بررسی</strong></p><ul class="clean issues">${mgrPlan.report.map(r=>`<li style="color:${r.ok?(r.warn?"var(--rec)":"var(--ok)"):"var(--warn)"}">${r.ok?(r.warn?"⚠":"✓"):"✗"} ${esc(r.text)}</li>`).join("")}</ul>
