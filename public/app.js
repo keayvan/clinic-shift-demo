@@ -1490,8 +1490,9 @@ function doPrint(){ $("#printArea").innerHTML=pdfHtml(); try{window.print()}catc
 function seenAt(id){try{return +localStorage.getItem("seen_"+id)||0}catch(e){return 0}}
 /* هشدارهای کوتاه: یک خط خلاصه، با کلیک توضیح کامل و دکمه‌ها باز می‌شود */
 let alertOpen={};
-function alertItem(key,summary,body,cls){
-  return `<details class="alitem ${cls||""}" data-al="${esc(key)}" ${alertOpen[key]?"open":""}><summary><span>${summary}</span></summary><div class="albody">${body}</div></details>`;
+function alertItem(key,summary,body,cls,defOpen){
+  const open=alertOpen[key]===undefined?!!defOpen:alertOpen[key];   /* انتخاب صریح کاربر بر پیش‌فرض می‌چربد */
+  return `<details class="alitem ${cls||""}" data-al="${esc(key)}" ${open?"open":""}><summary><span>${summary}</span></summary><div class="albody">${body}</div></details>`;
 }
 function noticesPanel(id){
   if(!sched) return "";
@@ -2034,7 +2035,7 @@ function doctorSubPanel(id){
       `<div>${r.kind==="gap"?"دستیار ندارید.":esc(nm(r.who))+" نمی‌تواند بیاید."}</div>
       <div class="note" style="margin:4px 0">${sts.length?"آزادند و از آن‌ها پرسیده شد؛ هر کدام را ترجیح می‌دهید انتخاب کنید. تصمیم نهایی با مدیر است.":"فعلاً دستیار آزادی نیست؛ مدیر در جریان است."}</div>
       ${sts.map(x=>`<div class="row" style="margin:4px 0"><span class="chip assistant">${esc(nm(x.id))}</span><span style="color:${lab[x.st][1]}">${lab[x.st][0]}</span>${(cfg.pairings?.[id]||[]).includes(x.id)?"":`<span class="note">(جزو دستیارهای همیشگی شما نیست)</span>`}${x.st!=="no"?`<button class="btn ${pf===x.id?"primary":"quiet"}" data-dp="${r.id}|${x.id}">${pf===x.id?"★ ترجیح من":"ترجیح من"}</button>`:""}</div>`).join("")}
-      ${sts.length?`<p class="row" style="margin-top:6px"><button class="btn ${set&&!pf?"primary":"quiet"}" data-dp="${r.id}|">فرقی نمی‌کند</button></p>`:""}`);
+      ${sts.length?`<p class="row" style="margin-top:6px"><button class="btn ${set&&!pf?"primary":"quiet"}" data-dp="${r.id}|">فرقی نمی‌کند</button></p>`:""}`,"",sts.length>0);
   }).join("");
 }
 function myRequestsPanel(id){
