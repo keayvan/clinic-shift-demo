@@ -143,6 +143,7 @@ async function exportInsXlsx(){
   db.collection("archive").onSnapshot(q=>{archive={};q.docs.forEach(x=>archive[x.id]=x.data());render()},()=>{});
   db.collection("patients").onSnapshot(q=>{patients={};q.docs.forEach(x=>patients[x.id]=x.data());render();if(patDraft.openId&&Shell.kind()==="patient")renderPatientSheet()},()=>{});
   db.collection("inventory").onSnapshot(q=>{inventory={};q.docs.forEach(x=>inventory[x.id]=x.data());render()},()=>{});
+  db.collection("mgrnotes").onSnapshot(q=>{mgrnotes={};q.docs.forEach(x=>mgrnotes[x.id]=x.data());if(who==="manager")render()},()=>{});
   db.collection("appointments").onSnapshot(q=>{appts={};q.docs.forEach(x=>appts[x.id]=x.data());render()},()=>{});
   LAB.start();
   IMP.start();
@@ -773,7 +774,7 @@ function managerView(){
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
   const tabs=[["demo","داده آزمایشی"],["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["calendar","تقویم"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
-  let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
+  let h=syncBar()+mgrNotesPanel()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
   h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="calendar"?calendarTab(): tab==="demo"?demoTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
@@ -1251,12 +1252,35 @@ function hoursChartHtml(id){
   return h;
 }
 /* پروندهٔ شخصی که خود فرد در پورتالش می‌بیند */
+/* مشخصات من: اول فقط نمایش؛ «ویرایش» ← «بررسی» ← «تأیید و ذخیره»، و یک اعلان خلاصه برای مدیر */
+let selfMode={}, selfDraft={}, selfPending={}, selfMsg={};
+const staffFieldLabel=k=>(STAFF_FIELDS.find(f=>f[0]===k)||[k,k])[1];
+function staffViewList(s){
+  const rows=STAFF_FIELDS.filter(f=>!f[5]||f[5]===s.role).map(f=>`<div class="kv"><span class="note">${f[1]}</span><span>${s[f[0]]?esc(String(s[f[0]])):"—"}</span></div>`).join("");
+  return `<div class="kvgrid">${rows}</div>`;
+}
 function selfProfileHtml(id){
   const s=byId(id); if(!s) return "";
+  const mode=selfMode[id]||"view", msg=selfMsg[id];
+  let body;
+  if(mode==="edit") body=`<p class="note" style="margin:4px 0 0">موارد خاکستری را فقط مدیر عوض می‌کند. اطلاعات تماس و شخصی را خودت می‌توانی عوض کنی.</p>${staffFormHtml({...s,...(selfDraft[id]||{})},"self")}
+    ${msg?`<p class="warn" style="margin-top:8px">${esc(msg)}</p>`:""}
+    <p class="row" style="margin-top:10px"><button class="btn primary" data-self-review="${id}">بررسی تغییرها</button><button class="btn quiet" data-self-cancel="${id}">انصراف</button></p>`;
+  else if(mode==="confirm"){
+    const p=selfPending[id]||{};
+    body=`<p style="margin:6px 0 4px"><strong>این تغییرها ذخیره شود؟</strong></p><ul class="clean issues">${Object.keys(p).map(k=>`<li><strong>${staffFieldLabel(k)}:</strong> ${k==="sheba"?"<span class=\"note\">(شمارهٔ جدید)</span>":`<span class="note">${esc(String(s[k]||"—"))}</span> ← ${esc(String(p[k]||"—"))}`}</li>`).join("")}</ul>
+    <p class="note" style="margin:6px 0 0">بعد از تأیید، یک اعلان کوتاه برای مدیر می‌رود که چه مواردی را عوض کرده‌ای (بدون مقدارها).</p>
+    <p class="row" style="margin-top:10px"><button class="btn primary" data-self-confirm="${id}">تأیید و ذخیره</button><button class="btn quiet" data-self-back="${id}">برگشت به ویرایش</button></p>`;
+  }else body=`${staffViewList(s)}${msg?`<p class="okline" style="margin-top:8px">${esc(msg)}</p>`:""}<p class="row" style="margin-top:10px"><button class="btn" data-self-edit="${id}">ویرایش</button></p>`;
   return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip">${ROLEN[s.role]}</span></div>${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}</div>`
-    +hoursChartHtml(id)
-    +`<div class="panel"><strong>مشخصات</strong><p class="note" style="margin:4px 0 0">موارد خاکستری را فقط مدیر عوض می‌کند. اطلاعات تماس و شخصی را خودت می‌توانی به‌روز کنی.</p>${staffFormHtml(s,"self")}
-    <p class="row" style="margin-top:10px"><button class="btn primary" data-self-save="${id}">ذخیره</button><span id="selfMsg" class="okline"></span></p></div>`;
+    +hoursChartHtml(id)+`<div class="panel"><strong>مشخصات</strong>${body}</div>`;
+}
+/* اعلان‌های کوتاه برای مدیر: چه کسی چه چیزی را عوض کرد */
+let mgrnotes={};
+async function notifyManager(text){ const id=uid(); await db.doc("mgrnotes/"+id).set({id,at:Date.now(),text,seen:false}); }
+function mgrNotesPanel(){
+  const list=Object.values(mgrnotes).filter(n=>!n.seen).sort((a,b)=>b.at-a.at); if(!list.length) return "";
+  return `<div class="panel newbox"><strong>خبرهای تازه از کارکنان (${fa(list.length)})</strong><ul class="clean issues">${list.slice(0,10).map(n=>`<li>${esc(n.text)} <span class="note">${new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span> <button class="x" data-mnote="${n.id}">دیدم</button></li>`).join("")}</ul>${list.length>1?`<p class="row" style="margin-top:6px"><button class="btn quiet" data-mnote="all">همه را دیدم</button></p>`:""}</div>`;
 }
 /* اطلاعات آزمایشی کارمند؛ فقط جاهای خالی را پر می‌کند */
 function staffDemoInfo(s){
@@ -2807,11 +2831,29 @@ function bind(){
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   for(const sel of ["#mgrTxt","#mgrTxtS"]){ const mt=$(sel); if(mt) mt.oninput=e=>mgrDraft=e.target.value; }
-  document.querySelectorAll("[data-self-save]").forEach(b=>b.onclick=async()=>{
-    const root=document.querySelector("#pageBody")||document, ok=await staffSave(b.dataset.selfSave,readStaffForm(root,"self"));
-    const m=document.querySelector("#selfMsg"); if(m) m.textContent=ok?"ذخیره شد.":"ذخیره نشد.";
+  document.querySelectorAll("[data-self-edit]").forEach(b=>b.onclick=()=>{selfMode[b.dataset.selfEdit]="edit";selfDraft[b.dataset.selfEdit]={};selfMsg[b.dataset.selfEdit]="";render()});
+  document.querySelectorAll("[data-self-cancel]").forEach(b=>b.onclick=()=>{const i=b.dataset.selfCancel;selfMode[i]="view";selfDraft[i]={};selfMsg[i]="";render()});
+  document.querySelectorAll("[data-self-back]").forEach(b=>b.onclick=()=>{selfMode[b.dataset.selfBack]="edit";render()});
+  document.querySelectorAll("[data-self-review]").forEach(b=>b.onclick=()=>{
+    const i=b.dataset.selfReview, s=byId(i), root=document.querySelector("#pageBody")||document, vals=readStaffForm(root,"self"), ch={};
+    for(const k in vals) if(String(vals[k]||"")!==String(s[k]||"")) ch[k]=vals[k];
+    selfDraft[i]=vals;
+    if(!Object.keys(ch).length){ selfMsg[i]="تغییری نداده‌ای."; return render() }
+    selfPending[i]=ch; selfMsg[i]=""; selfMode[i]="confirm"; render();
   });
-  document.querySelectorAll("[data-seen-one]").forEach(b=>b.onclick=()=>{markSeen(who,b.dataset.seenOne);render()});
+  document.querySelectorAll("[data-self-confirm]").forEach(b=>b.onclick=async()=>{
+    const i=b.dataset.selfConfirm, p=selfPending[i]||{}, s=byId(i); b.disabled=true;
+    if(s&&Object.keys(p).length&&await staffSave(i,p)){
+      const labs=Object.keys(p).map(staffFieldLabel);
+      try{ await notifyManager(`${s.name} این موارد را در مشخصاتش عوض کرد: ${labs.join("، ")}`) }catch(e){}
+      selfMsg[i]="ذخیره شد و برای مدیر اعلان رفت.";
+    }else selfMsg[i]="ذخیره نشد.";
+    selfMode[i]="view"; selfDraft[i]={}; selfPending[i]={}; render();
+  });
+  document.querySelectorAll("[data-mnote]").forEach(b=>b.onclick=async()=>{
+    const ids=b.dataset.mnote==="all"?Object.values(mgrnotes).filter(n=>!n.seen).map(n=>n.id):[b.dataset.mnote];
+    for(const id of ids){ const n=mgrnotes[id]; if(n){ n.seen=true; await db.doc("mgrnotes/"+id).set({...n,seen:true}) } } render();
+  });
   document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open; if(d.open&&d.dataset.al.startsWith("ok-")) markSeen(who,d.dataset.al)});
   document.querySelectorAll("[data-oncall-day]").forEach(b=>b.onclick=()=>openCalDay(isoOf(weekDateOf(b.dataset.oncallDay))));
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));

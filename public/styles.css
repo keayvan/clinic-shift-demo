@@ -273,3 +273,4 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 body.scrolled .mgrfab{display:flex}
 @media print{.mgrfab{display:none!important}}
 .oclink{font-size:.78rem;font-weight:600;margin-inline-start:6px}
+.kvgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;margin-top:8px}.kv{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
