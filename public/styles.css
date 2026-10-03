@@ -88,7 +88,15 @@ table.av th:first-child,table.av td:first-child{text-align:start;white-space:now
 .dot.on{background:var(--ast)}
 .rolehead td{background:var(--bg);font-weight:800;color:var(--ink);border-inline-start:4px solid var(--accent)}
 .cathead{font-weight:800;font-size:1.05rem;margin:18px 0 8px;padding:6px 10px;background:var(--bg);border-inline-start:4px solid var(--accent);border-radius:4px}
-#whoSel optgroup{font-weight:800;font-style:normal}
+.vh{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;clip:rect(0 0 0 0)}
+.whomenu{position:relative}
+.whobtn{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:150px;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;cursor:pointer;text-align:right}
+.wholist{position:absolute;inset-inline-start:0;top:calc(100% + 4px);z-index:50;min-width:220px;max-width:calc(100vw - 32px);max-height:70vh;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.2);padding:4px;direction:rtl;text-align:right}
+.wholist .grp{font-weight:800;color:var(--ink);padding:10px 10px 4px;margin-top:4px;border-top:1px solid var(--line);font-size:.95rem}
+.wholist .grp:first-child{border-top:0;margin-top:0}
+.wholist .opt{display:block;width:100%;text-align:right;background:none;border:0;border-radius:6px;padding:8px 16px;cursor:pointer}
+.wholist .opt:hover,.wholist .opt[aria-selected=true]{background:var(--bg)}
+.wholist .opt[aria-selected=true]{font-weight:700;color:var(--accent)}
 
 .rule{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
 .rule:last-child{border-bottom:0}

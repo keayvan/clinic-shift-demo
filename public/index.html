@@ -22,9 +22,10 @@
   <header class="top">
     <div class="brand">شیفت کلینیک<small>برنامه هفتگی دکترها، دستیارها و منشی‌ها</small></div>
     <div class="tools">
-      <label class="who">من:
-        <select id="whoSel" aria-label="نمایش به عنوان"></select>
-      </label>
+      <div class="who"><span id="whoLbl">من:</span>
+        <select id="whoSel" class="vh" aria-label="نمایش به عنوان" tabindex="-1"></select>
+        <div class="whomenu"><button id="whoBtn" class="whobtn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="whoLbl whoCur"><span id="whoCur"></span><span aria-hidden="true">▾</span></button><div id="whoList" class="wholist" role="listbox" aria-labelledby="whoLbl" hidden></div></div>
+      </div>
       <button class="iconbtn" id="guideBtn" type="button">راهنما</button>
     </div>
   </header>

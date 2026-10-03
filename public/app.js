@@ -146,6 +146,14 @@ async function exportInsXlsx(){
 })();
 
 $("#whoSel").addEventListener("change",e=>{who=e.target.value;FB.act("who:"+who);reqErr="";staffErr="";try{localStorage.setItem("who",who)}catch(_){}render()});
+{ /* منوی «من:»: فهرست دلخواه با عنوان گروه‌های پررنگ و متن راست‌چین (فهرست خود مرورگر قابل‌کنترل نیست) */
+  const btn=$("#whoBtn"), list=$("#whoList");
+  const setOpen=o=>{list.hidden=!o;btn.setAttribute("aria-expanded",String(o))};
+  btn.addEventListener("click",e=>{e.stopPropagation();setOpen(list.hidden)});
+  list.addEventListener("click",e=>{const o=e.target.closest("[data-who]"); if(!o) return; setOpen(false); const sel=$("#whoSel"); sel.value=o.dataset.who; sel.dispatchEvent(new Event("change")); btn.focus()});
+  document.addEventListener("click",e=>{if(!list.hidden&&!e.target.closest(".whomenu")) setOpen(false)});
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!list.hidden){setOpen(false);btn.focus()}});
+}
 
 function renderWho(){
   const sel=$("#whoSel"); if(!cfg) return;
@@ -156,6 +164,12 @@ function renderWho(){
   if(sel.dataset.sig!==h){sel.innerHTML=h;sel.dataset.sig=h}
   if(who!=="manager"&&!byId(who)) who="manager";
   sel.value=who;
+  const grp=r=>r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها";
+  const opt=(id,name)=>`<button type="button" class="opt" role="option" data-who="${id}" aria-selected="${who===id}">${esc(name)}</button>`;
+  let lh=opt("manager","مدیر مجموعه");
+  for(const r of ["doctor","assistant","reception","insurance","lab"]) lh+=`<div class="grp" role="presentation">${grp(r)}</div>`+ofRole(r).map(s=>opt(s.id,s.name)).join("");
+  const L=$("#whoList"); if(L.dataset.sig!==lh){L.innerHTML=lh;L.dataset.sig=lh}
+  $("#whoCur").textContent=who==="manager"?"مدیر مجموعه":nm(who);
 }
 
 function render(){
