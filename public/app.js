@@ -1147,12 +1147,66 @@ function staffAddPanel(){
     <p class="row" style="margin-top:8px"><button class="btn primary" data-act="staff-add">افزودن</button></p></div>`;
 }
 function staffTab(){
-  let h=staffAddPanel()+`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
+  let h=staffAddPanel()+`<p class="lead">روی نام هر نفر بزن تا پروندهٔ او باز شود: مشخصات، شیفت‌ها، حضور، قوانین و امکان ویرایش یا حذف.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}`;
   for(const r of ["doctor","assistant","reception","insurance","lab"]){
     h+=`<div class="cathead">${r==="insurance"?"مسئول بیمه":r==="lab"?"لابراتوار":ROLEN[r]+"ها"} <span class="note" style="font-weight:400">(${fa(ofRole(r).length)})</span></div>`;
-    for(const s of ofRole(r)) h+=`<div class="staffrow"><span class="tag">${ROLEN[r]}</span><input type="text" data-name="${s.id}" value="${esc(nameDraft[s.id]??s.name)}" aria-label="نام">${r==="doctor"?`<select data-spec="${s.id}" aria-label="تخصص">${SPECS.map(x=>`<option ${(specDraft[s.id]??s.specialty)===x?"selected":""}>${x}</option>`).join("")}</select>`:""}<button class="x" data-rm="${s.id}" aria-label="حذف ${esc(s.name)}">${rmArm===s.id?"مطمئنید؟ حذف کامل":"حذف"}</button></div>`;
+    for(const s of ofRole(r)){
+      const sub=[s.specialty,s.demo?"آزمایشی":""].filter(Boolean).join("، ");
+      h+=`<button class="staffbtn" data-prof="${s.id}"><span><strong>${esc(s.name)}</strong>${sub?` <span class="note">${esc(sub)}</span>`:""}</span><span class="note">‹</span></button>`;
+    }
   }
-  return h+`<p class="row" style="margin-top:12px"><button class="btn primary" data-act="save-names">ذخیره نام‌ها</button></p></div>`;
+  return h;
+}
+/* پروندهٔ هر کارمند: با کلیک روی نامش در تب کارکنان باز می‌شود */
+let profArm=false;
+function staffProfileHtml(id){
+  const s=byId(id); if(!s) return "<p class='note'>این فرد پیدا نشد.</p>";
+  const a=avail[id], ms=myShifts(id), mt=monthlyTotals()[id];
+  const sent=a?.confirmed?(a.auto&&a.week===availWeek()?"خودکار ثبت شد":"ثبت شده"):"نفرستاده";
+  const pairs=s.role==="doctor"?(cfg.pairings?.[id]||[]).map(nm):s.role==="assistant"?ofRole("doctor").filter(d=>(cfg.pairings?.[d.id]||[]).includes(id)).map(d=>d.name):[];
+  const rules=(cfg.rules||[]).filter(r=>r.staff===id||(r.ids||[]).includes(id));
+  let h=`<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip ${s.role==="doctor"?"doctor":s.role==="assistant"?"assistant":""}">${ROLEN[s.role]}</span></div>
+    ${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}${s.demo?'<p class="note" style="margin:2px 0 0">آزمایشی</p>':""}
+    ${pairs.length?`<p style="margin:8px 0 0"><span class="note">${s.role==="doctor"?"دستیارها":"دکترهای همکار"}:</span> ${pairs.map(esc).join("، ")}</p>`:""}</div>
+  <div class="panel"><strong>مشخصات (قابل‌ویرایش)</strong>
+    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:6px">
+      <div style="flex:2 1 160px"><label class="note" for="pfName" style="display:block">نام</label><input type="text" id="pfName" value="${esc(s.name)}" style="width:100%;box-sizing:border-box"></div>
+      <div style="flex:1 1 130px"><label class="note" for="pfPhone" style="display:block">تلفن</label><input type="tel" id="pfPhone" value="${esc(s.phone||"")}" style="width:100%;box-sizing:border-box"></div>
+      ${s.role==="doctor"?`<div style="flex:1 1 140px"><label class="note" for="pfSpec" style="display:block">تخصص</label><select id="pfSpec" style="width:100%">${SPECS.map(x=>`<option ${s.specialty===x?"selected":""}>${x}</option>`).join("")}</select></div>`:""}
+    </div>
+    <label class="note" for="pfNote" style="display:block;margin-top:8px">یادداشت</label><textarea id="pfNote" style="min-height:44px">${esc(s.note||"")}</textarea>
+    <p class="row" style="margin-top:8px"><button class="btn primary" data-prof-save="${id}">ذخیره</button></p></div>`;
+  h+=`<div class="panel"><strong>شیفت‌های این هفته</strong>${ms==null?'<p class="note" style="margin:6px 0 0">برنامه هنوز ساخته نشده.</p>':ms.length?`<ul class="clean shiftlist">${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:'<p class="note" style="margin:6px 0 0">در برنامه شیفتی ندارد.</p>'}
+    ${mt?.shifts?`<p class="note" style="margin:8px 0 0">این ماه: ${fa(mt.shifts)} شیفت، حدود ${fa(mt.shifts*SHIFT_HOURS)} ساعت</p>`:""}</div>`;
+  if(!["insurance","lab"].includes(s.role)) h+=`<div class="panel"><strong>حضور هفتهٔ بعد</strong> <span class="note">(${sent})</span>${a?.grid?gridHtml(a.grid,false):'<p class="note" style="margin:6px 0 0">هنوز چیزی ثبت نکرده.</p>'}${a?.text?`<p class="note" style="margin:6px 0 0">«${esc(a.text)}»</p>`:""}</div>`;
+  if(rules.length) h+=`<div class="panel"><strong>قوانین مربوط (${fa(rules.length)})</strong><ul class="clean issues">${rules.map(r=>`<li>${esc(describe(r))}</li>`).join("")}</ul></div>`;
+  if(s.role==="doctor"){
+    const mine=Object.entries(patients).filter(([,p])=>p.doctor===id), today=Object.values(appts).filter(x=>x.doctor===id&&x.date===todayISO()&&x.status!=="cancelled").length;
+    h+=`<div class="panel"><strong>بیماران</strong><p style="margin:6px 0 0">${fa(mine.length)} بیمار · ${fa(today)} نوبت امروز</p>${mine.length?`<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">${mine.slice(0,12).map(([pid,p])=>`<button class="btn quiet" data-pat="${pid}" style="padding:2px 8px">${esc(p.name)}</button>`).join("")}${mine.length>12?`<span class="note">و ${fa(mine.length-12)} نفر دیگر</span>`:""}</div>`:""}</div>`;
+  }
+  h+=`<p class="row" style="margin-top:14px"><button class="btn danger" data-prof-rm="${id}">${profArm?"مطمئنی؟ حذف کامل از سیستم":"حذف از سیستم"}</button></p>`;
+  return h;
+}
+function openStaffProfile(id){
+  profArm=false;
+  Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>پروندهٔ کارمند</strong></div><div id="pageBody">${staffProfileHtml(id)}</div>`,root=>{
+    root.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
+    const sv=root.querySelector("[data-prof-save]"); if(sv) sv.onclick=async()=>{
+      const next=structuredClone(cfg), t=next.staff.find(x=>x.id===id); if(!t) return;
+      const name=(root.querySelector("#pfName").value||"").trim(); if(name) t.name=name.slice(0,40);
+      t.phone=(root.querySelector("#pfPhone").value||"").trim().slice(0,20); t.note=(root.querySelector("#pfNote").value||"").trim().slice(0,300);
+      const sp=root.querySelector("#pfSpec"); if(sp) t.specialty=sp.value;
+      await db.doc("clinic/config").set(next); cfg=next; staffMsgBad=false; staffMsg=`مشخصات «${t.name}» ذخیره شد.`; openStaffProfile(id);
+    };
+    const rm=root.querySelector("[data-prof-rm]"); if(rm) rm.onclick=async()=>{
+      if(!profArm){ profArm=true; rm.textContent="مطمئنی؟ حذف کامل از سیستم"; return }
+      const name=nm(id), v=validate({op:"remove_staff",id}); if(!v) return;
+      rulePending={actions:[v],rejected:[]}; ruleDraft=""; await ruleApply();
+      Shell.close();
+      if(ruleErr){staffMsg=`${name} حذف نشد: ${ruleErr}`;staffMsgBad=true;ruleErr=""} else {staffMsg=`${name} به‌طور کامل از سیستم حذف شد.`;staffMsgBad=false}
+      render();
+    };
+  },{page:true,kind:"staffprofile"});
 }
 
 /* ---------- scheduler ---------- */
@@ -2616,6 +2670,7 @@ function bind(){
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
+  document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
   document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
   document.querySelectorAll("[data-appat]").forEach(b=>b.onclick=()=>openApptPatient(b.dataset.appat));
