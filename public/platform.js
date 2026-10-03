@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.14.0";
+const APP_VERSION = "2.15.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -302,16 +302,29 @@ const Shell = (() => {
   addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e; banners(); });
   addEventListener("appinstalled", () => { deferred = null; FB.act("installed"); banners(); });
 
-  let locked = false, pendingNews = null;
+  let locked = false, pendingNews = null, onCloseCb = null;
+  /* opts: locked (بدون راه بستن)، page (برگهٔ تمام‌صفحه با دکمهٔ بازگشت خودش)، onClose (وقتی بسته یا جایگزین شد) */
   function sheet(html, onOpen, opts) {
-    const root = $("#sheet"); locked = !!(opts && opts.locked);
-    root.innerHTML = `<div class="sheet-back" ${locked ? "" : "data-close-sheet"}></div><div class="sheet-card" role="dialog" aria-modal="true">${locked ? "" : `<button class="sheet-x" data-close-sheet aria-label="بستن">✕</button>`}${html}</div>`;
+    if (onCloseCb) { const f = onCloseCb; onCloseCb = null; try { f(); } catch (e) {} }
+    const root = $("#sheet"); locked = !!(opts && opts.locked); onCloseCb = (opts && opts.onClose) || null;
+    const page = !!(opts && opts.page);
+    root.innerHTML = `<div class="sheet-back" ${locked ? "" : "data-close-sheet"}></div><div class="sheet-card${page ? " page" : ""}" role="dialog" aria-modal="true">${locked || page ? "" : `<button class="sheet-x" data-close-sheet aria-label="بستن">✕</button>`}${html}</div>`;
     root.hidden = false; document.body.style.overflow = "hidden";
     root.querySelectorAll("[data-close-sheet]").forEach(b => b.onclick = close);
     onOpen && onOpen(root);
     const card = root.querySelector(".sheet-card"); card.setAttribute("tabindex", "-1"); card.scrollTop = 0; card.focus({ preventScroll: true });
   }
-  function close() { locked = false; const r = $("#sheet"); r.hidden = true; r.innerHTML = ""; document.body.style.overflow = ""; }
+  function close() { locked = false; const r = $("#sheet"); r.hidden = true; r.innerHTML = ""; document.body.style.overflow = ""; if (onCloseCb) { const f = onCloseCb; onCloseCb = null; try { f(); } catch (e) {} } }
+  /* محتوای برگهٔ تمام‌صفحه را بدون پرش اسکرول و بدون از دست رفتن فوکوس نو می‌کند */
+  function refresh(html) {
+    const body = $("#pageBody"); if (!body) return false;
+    const card = body.closest(".sheet-card"), top = card ? card.scrollTop : 0, ae = document.activeElement;
+    const keep = ae && body.contains(ae) && ae.id ? { id: ae.id, s: ae.selectionStart, e: ae.selectionEnd } : null;
+    body.innerHTML = html;
+    if (card) card.scrollTop = top;
+    if (keep) { const el = document.getElementById(keep.id); if (el) { el.focus({ preventScroll: true }); try { if (keep.s != null) el.setSelectionRange(keep.s, keep.e); } catch (e) {} } }
+    return true;
+  }
   addEventListener("keydown", e => { if (e.key === "Escape" && !$("#sheet").hidden && !locked) close(); });
 
   /* اسم کاربری: بار اول (و برای کسانی که اپ را از قبل دارند، بعد از این به‌روزرسانی) اجباری است */
@@ -439,5 +452,5 @@ const Shell = (() => {
     }
     FB.flush();
   }
-  return { start, badge, sheet, close };
+  return { start, badge, sheet, close, refresh };
 })();

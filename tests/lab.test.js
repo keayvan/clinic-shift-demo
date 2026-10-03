@@ -1,6 +1,6 @@
 // Run: node tests/lab.test.js  — منطق لابراتوار (public/lab.js)
 require("../public/lab.js");
-const { nextOf, prevOf, canMoveFor, normalize, STATUS, KINDS, DEMO_PLAN } = globalThis.LAB._t;
+const { nextOf, prevOf, canMoveFor, normalize, visibleFor, STATUS, KINDS, DEMO_PLAN } = globalThis.LAB._t;
 let pass = 0, fail = 0;
 function eq(name, got, want) {
   const ok = JSON.stringify(got) === JSON.stringify(want);
@@ -39,6 +39,17 @@ eq("long input is cut", normalize({ patient: "x".repeat(500), doctor: "d1", note
 // داده‌های آزمایشی همهٔ مرحله‌ها و فقط نوع کارهای معتبر را پوشش می‌دهند
 for (const [st] of STATUS) eq("demo covers " + st, DEMO_PLAN.some(x => x[0] === st), true);
 eq("demo kinds valid", DEMO_PLAN.every(x => KINDS.includes(x[1])), true);
+
+// چه کسی کدام سفارش را می‌بیند
+const ord = { doctor: "d1", createdBy: "r1", refs: ["a3"] };
+eq("manager sees all", visibleFor(ord, "manager", "manager"), true);
+eq("lab person sees all", visibleFor(ord, "l1", "lab"), true);
+eq("order doctor sees", visibleFor(ord, "d1", "doctor"), true);
+eq("creator sees", visibleFor(ord, "r1", "reception"), true);
+eq("referred person sees", visibleFor(ord, "a3", "assistant"), true);
+eq("other doctor does not", visibleFor(ord, "d2", "doctor"), false);
+eq("other assistant does not", visibleFor(ord, "a1", "assistant"), false);
+eq("no refs field is fine", visibleFor({ doctor: "d1", createdBy: "r1" }, "a1", "assistant"), false);
 
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

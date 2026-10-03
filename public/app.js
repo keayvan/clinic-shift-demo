@@ -178,6 +178,7 @@ function render(){
   if(!cfg){app.innerHTML='<div class="panel">هنوز کارکنان تعریف نشده‌اند.</div>';return}
   renderWho();
   app.innerHTML = who==="manager"?managerView():staffView(who);
+  syncStaffPage();
   bind();
 }
 
@@ -211,36 +212,25 @@ function myShifts(id){
   return out;
 }
 
-function staffView(id){
-  const me=byId(id), a=avail[id], p=staffParse[id];
-  let h=`<h2>سلام ${esc(me.name)}</h2>`;
-  if(me.role==="insurance") return h+insuranceTab();
-  if(me.role==="lab") return h+LAB.portal(id);
-  h+=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+myRequestsPanel(id);
-  const ms=myShifts(id);
-  if(ms){
-    h+=`<div class="panel"><strong>شیفت‌های تو ${sched.published?`(نسخه ${fa(sched.rev||1)})`:`<span class="note">(پیش‌نویس؛ هنوز مدیر تأیید و ارسال نکرده)</span>`}</strong>`+
-      (ms.length?`<ul>${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="note">در این برنامه شیفتی برایت نیست.</p>`)+
-      (sched.published?`<p class="note" style="margin:8px 0 4px">برنامه کامل کلینیک:</p><div class="row">${exportBtns()}</div>`:"")+`${exportMsg?`<p class="warn" style="margin-top:8px">${esc(exportMsg)}</p>`:""}</div>`;
-  }
-  h+=monthPanel(id)+patientsPanel(id)+patientIntakePanel(id)+apptDoctorPanel(id)+apptAssistantPanel(id)+apptBookingPanel(id)+LAB.staffPanel(id)+IMP.staffPanel(id);
+/* پورتال افراد: صفحهٔ اصلی فقط هشدارها و چند دکمه است؛ هر دکمه یک برگهٔ تمام‌صفحه باز می‌کند */
+let staffPage=null, staffPageWho=null;
+function staffAvailHtml(id){
+  const a=avail[id], p=staffParse[id];
   if(a?.confirmed && !p){
-    h+=`<div class="panel"><p class="okline">حضور هفته بعدت ثبت شد.</p>${a.summary?`<p class="note">${esc(a.summary)}</p>`:""}${gridHtml(a.grid,false)}
-      <p class="row" style="margin-top:12px"><button class="btn" data-act="staff-redo">تغییر حضور</button></p></div>`;
-    return h+requestPanel(id);
+    return `<div class="panel"><p class="okline">حضور هفته بعدت ثبت شد.</p>${a.summary?`<p class="note">${esc(a.summary)}</p>`:""}${gridHtml(a.grid,false)}
+      <p class="row" style="margin-top:12px"><button class="btn" data-act="staff-redo">تغییر حضور</button></p></div>`+requestPanel(id);
   }
   if(!p){
-    h+=`<p class="lead">بنویس هفته بعد کدام روزها و شیفت‌ها هستی. لازم نیست فرم پر کنی؛ عادی بنویس.</p>
+    return `<p class="lead">بنویس هفته بعد کدام روزها و شیفت‌ها هستی. لازم نیست فرم پر کنی؛ عادی بنویس.</p>
     <div class="panel">
       <label for="staffTxt" class="note">حضور هفته بعد</label>
       <textarea id="staffTxt" placeholder="مثلاً: شنبه و دوشنبه هستم، سه‌شنبه فقط صبح، پنج‌شنبه نیستم.">${esc(staffDraft[id]??a?.text??"")}</textarea>
       ${staffErr?`<p class="warn">${esc(staffErr)}</p>`:""}
-      <p class="row" style="margin-top:10px"><button class="btn primary" data-act="staff-parse" ${staffBusy||!sample?"disabled":""}>${staffBusy?"در حال فهمیدن متن…":"بررسی متن"}</button></p>
+      <p class="row" style="margin-top:10px"><button class="btn primary" data-act="staff-parse" ${staffBusy||!sample?"disabled":""}>${staffBusy?"در حال فهمیدن متن…":"بررسی متن"}</button>
       ${!sample?`<p class="note">فهمیدن متن در این نمایش در دسترس نیست.</p>`:""}
     </div>`;
-    return h;
   }
-  h+=`<div class="panel pending">
+  return `<div class="panel pending">
     <strong>این‌طور فهمیدم. اگر درست نیست، روی خانه‌ها بزن تا عوضش کنی.</strong>
     ${p.summary?`<p class="note">${esc(p.summary)}</p>`:""}
     ${p.unclear?.length?`<p class="warn">مطمئن نبودم: ${p.unclear.map(esc).join("؛ ")}</p>`:""}
@@ -249,7 +239,44 @@ function staffView(id){
       <button class="btn primary" data-act="staff-confirm">تأیید و ارسال</button>
       <button class="btn quiet" data-act="staff-back">ویرایش متن</button>
     </p></div>`;
+}
+function staffPages(id){
+  const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
+  const a=avail[id], p=staffParse[id], ms=myShifts(id);
+  add("shifts","شیفت‌های من",ms?`<div class="panel"><strong>شیفت‌های تو ${sched.published?`(نسخه ${fa(sched.rev||1)})`:`<span class="note">(پیش‌نویس؛ هنوز مدیر تأیید و ارسال نکرده)</span>`}</strong>`+
+      (ms.length?`<ul>${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="note">در این برنامه شیفتی برایت نیست.</p>`)+
+      (sched.published?`<p class="note" style="margin:8px 0 4px">برنامه کامل کلینیک:</p><div class="row">${exportBtns()}</div>`:"")+`${exportMsg?`<p class="warn" style="margin-top:8px">${esc(exportMsg)}</p>`:""}</div>`+monthPanel(id):"");
+  const done=!!a?.confirmed&&!p;
+  add("avail","حضور هفته بعد",staffAvailHtml(id)+myRequestsPanel(id),{attn:!done,sub:done?"ثبت شد":"هنوز نفرستادی"});
+  add("patients","بیماران من",patientsPanel(id));
+  add("intake","پذیرش بیمار جدید",patientIntakePanel(id));
+  add("appts","نوبت‌ها",apptDoctorPanel(id)+apptAssistantPanel(id)+apptBookingPanel(id));
+  const nl=LAB.badge(); add("lab","لابراتوار",LAB.staffPanel(id),{badge:nl});
+  add("implant","ایمپلنت",IMP.staffPanel(id));
+  return pages;
+}
+function staffView(id){
+  const me=byId(id);
+  let h=`<h2>سلام ${esc(me.name)}</h2>`;
+  if(me.role==="insurance") return h+insuranceTab();
+  if(me.role==="lab") return h+LAB.portal(id);
+  h+=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id);
+  h+=`<div class="tiles">`+staffPages(id).map(pg=>`<button class="tile ${pg.attn?"attn":""}" data-page="${pg.key}">${pg.badge?`<span class="bd">${fa(pg.badge)}</span>`:""}${esc(pg.title)}${pg.sub?`<small>${pg.sub}</small>`:""}</button>`).join("")+`</div>`;
   return h;
+}
+function openStaffPage(key){
+  const pg=who!=="manager"&&staffPages(who).find(x=>x.key===key); if(!pg) return;
+  staffPage=key; staffPageWho=who;
+  Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>${esc(pg.title)}</strong></div><div id="pageBody">${pg.html}</div>`,null,{page:true,onClose:()=>{staffPage=null}});
+  bind();
+}
+/* بعد از هر render، برگهٔ بازِ پورتال هم نو می‌شود (بدون پرش اسکرول) */
+function syncStaffPage(){
+  if(!staffPage) return;
+  if(who==="manager"||staffPageWho!==who){ Shell.close(); return; }
+  const pg=staffPages(who).find(x=>x.key===staffPage);
+  if(!pg){ Shell.close(); return; }
+  if(!Shell.refresh(pg.html)) staffPage=null;
 }
 
 async function staffParseRun(){
@@ -2223,6 +2250,7 @@ function bind(){
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
+  document.querySelectorAll("[data-page]").forEach(b=>b.onclick=()=>openStaffPage(b.dataset.page));
   const npn=$("#newPatName"); if(npn) npn.oninput=e=>patDraft.name=e.target.value;
   const npt=$("#newPatText"); if(npt) npt.oninput=e=>patDraft.text=e.target.value;
   const inn=$("#invName"); if(inn) inn.oninput=e=>invDraft.name=e.target.value;

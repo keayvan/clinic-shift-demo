@@ -1,8 +1,8 @@
 /* Service worker: caches the whole app so it opens instantly and works offline.
    Bump VERSION on every release; the app then shows "نسخه جدید آماده است". */
-const VERSION = "2.14.0";
+const VERSION = "2.15.0";
 const CACHE = "clinic-shift-" + VERSION;
-const ASSETS = ["./", "index.html", "styles.css", "nlu.js", "platform.js", "patform.js", "lab.js", "app.js", "implant.js", "manifest.webmanifest", "changelog.json",
+const ASSETS = ["./", "index.html", "styles.css", "nlu.js", "platform.js", "patform.js", "refer.js", "lab.js", "app.js", "implant.js", "manifest.webmanifest", "changelog.json",
   "fonts/Vazirmatn-wght.woff2", "vendor/html2pdf.bundle.min.js", "vendor/xlsx.full.min.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/maskable-512.png", "icons/apple-touch-icon.png", "icons/favicon-64.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))); });

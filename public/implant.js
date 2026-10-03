@@ -77,7 +77,10 @@ const IMP = (() => {
   }
 
   /* ---------- access ---------- */
-  const level = id => id === "manager" ? "full" : (settings.access || {})[id] || "none";
+  /* هر پرونده را مدیر، دکتر پرونده، ثبت‌کننده و کسانی که مدیر به آن‌ها ارجاع داده می‌بینند؛ ارجاع دست‌کم دسترسی محدود می‌دهد */
+  const visFor = (c, id) => id === "manager" || c.doctor === id || c.createdBy === id || (c.refs || []).includes(id);
+  const vis = c => visFor(c, who);
+  const level = id => id === "manager" ? "full" : (settings.access || {})[id] || (Object.values(cases).some(c => (c.refs || []).includes(id)) ? "limited" : "none");
   const canSee = id => level(id) !== "none";
   const canMoney = id => level(id) === "full";
 
@@ -118,7 +121,7 @@ const IMP = (() => {
   /* ---------- list / filters ---------- */
   function filtered() {
     const q = NLU.norm(filt.q || ""), qd = digits(filt.q || "").replace(/\D/g, "");
-    let rows = Object.values(cases).filter(c => !!c.archived === filt.archived);
+    let rows = Object.values(cases).filter(vis).filter(c => !!c.archived === filt.archived);
     if (q) rows = rows.filter(c => NLU.norm(c.name).includes(q) || (qd.length >= 3 && digits(c.phone || "").includes(qd)));
     if (filt.doctor) rows = rows.filter(c => c.doctor === filt.doctor);
     if (filt.region) rows = rows.filter(c => (c.regions?.[filt.region]?.status || "none") !== "none");
@@ -134,7 +137,7 @@ const IMP = (() => {
   function remindersPanel() {
     if (!canMoney(who)) return "";
     const items = [];
-    for (const c of Object.values(cases)) if (!c.archived) for (const i of fin(c).inst) if (i.left > 0 && i.days <= 3) items.push({ c, i });
+    for (const c of Object.values(cases).filter(vis)) if (!c.archived) for (const i of fin(c).inst) if (i.left > 0 && i.days <= 3) items.push({ c, i });
     if (!items.length) return `<div class="panel"><strong>یادآوری اقساط</strong><p class="okline" style="margin:6px 0 0">قسط عقب‌افتاده یا نزدیکی نیست.</p></div>`;
     items.sort((a, b) => a.i.days - b.i.days);
     const lbl = d => d < 0 ? `${fa(-d)} روز عقب‌افتاده` : d === 0 ? "امروز سررسید" : d === 1 ? "فردا" : `${fa(d)} روز مانده`;
@@ -183,11 +186,11 @@ const IMP = (() => {
   /* ---------- daily report ---------- */
   function reportHtml() {
     const d = reportDate || todayISO(), rows = [];
-    for (const c of Object.values(cases)) for (const p of c.payments || []) if (p.date === d) rows.push({ c, p });
+    for (const c of Object.values(cases).filter(vis)) for (const p of c.payments || []) if (p.date === d) rows.push({ c, p });
     const by = Object.fromEntries(METHODS.map(([k]) => [k, 0])); let sum = 0;
     for (const { p } of rows) { by[p.method] = (by[p.method] || 0) + p.amount; sum += p.amount; }
     let overdue = 0, overdueN = 0, week = 0, debt = 0;
-    for (const c of Object.values(cases)) { if (c.archived) continue; const f = fin(c); debt += Math.max(0, f.balance); if (f.overdue) { overdue += f.overdue; overdueN++; } for (const i of f.inst) if (i.left > 0 && i.days >= 0 && i.days <= 7) week += i.left; }
+    for (const c of Object.values(cases).filter(vis)) { if (c.archived) continue; const f = fin(c); debt += Math.max(0, f.balance); if (f.overdue) { overdue += f.overdue; overdueN++; } for (const i of f.inst) if (i.left > 0 && i.days >= 0 && i.days <= 7) week += i.left; }
     return `<div class="panel"><div class="row" style="justify-content:space-between"><strong>گزارش مالی روزانه</strong><button class="btn" data-imp="xlsx">دانلود Excel</button></div>
       <div style="margin-top:8px">${dateSel("rep", d)}</div>
       <div class="imp-stats">
@@ -239,20 +242,21 @@ const IMP = (() => {
   function staffPanel(id) {
     const me = byId(id); if (!me) return "";
     if (me.role === "doctor") {
-      const mine = Object.values(cases).filter(c => c.doctor === id && !c.archived);
+      const mine = Object.values(cases).filter(c => visFor(c, id) && !c.archived);
       if (!mine.length) return "";
       return `<div class="panel"><strong>بیماران ایمپلنت من</strong><div class="row" style="margin-top:8px">${mine.map(c => `<button class="btn quiet" data-imp-open="${c.id}">${esc(c.name)}</button>`).join("")}</div></div>`;
     }
     if (!canSee(id)) return "";
     return `<h3 style="margin:18px 0 8px">ایمپلنت ${canMoney(id) ? "" : `<span class="note">(دسترسی محدود)</span>`}</h3>` + tab();
   }
-  const docCanOpen = c => byId(who)?.role === "doctor" && c.doctor === who;
+  const docCanOpen = c => byId(who)?.role === "doctor" && visFor(c, who);
 
   /* ---------- case sheet ---------- */
   function sheetHtml(c) {
     const m = canMoney(who), f = fin(c);
     let h = `<h2>${esc(c.name)}${c.archived ? ` <span class="note">(بایگانی)</span>` : ""}</h2>
       <p class="note" style="margin:0 0 8px">${esc(nm(c.doctor))} · ${esc(c.phone || "بدون تلفن")}</p>
+      ${who === "manager" ? `<p class="note" style="margin:0 0 8px">ارجاع: ${esc(REF.names(c.refs))} <button class="linkbtn" data-imp-refer="1">ارجاع…</button></p>` : ""}
       ${sheetMsg ? `<p class="okline">${sheetMsg}</p>` : ""}${sheetErr ? `<p class="warn">${esc(sheetErr)}</p>` : ""}`;
     if (money) return h + confirmHtml();
     h += `<strong>ناحیه‌های درمان</strong><div class="imp-regbox">` + REG.map(([k, n]) => {
@@ -320,6 +324,7 @@ const IMP = (() => {
         if (root.querySelector("#impPay")) payDraft = { ...payDraft, amount: v("#impPay"), note: v("#impPNote") || "", from4: v("#impFrom4") ?? payDraft.from4, toCard: v("#impTo") ?? payDraft.toCard, ref: v("#impRef") ?? payDraft.ref, date: readDate(root, "pay") };
         if (root.querySelector("#impTotal")) instDraft = { total: v("#impTotal"), down: v("#impDown"), count: v("#impCount"), every: v("#impEvery"), start: readDate(root, "inst") };
       };
+      root.querySelectorAll("[data-imp-refer]").forEach(b => b.onclick = () => REF.open("ارجاع پروندهٔ «" + c.name + "»", c.refs || [], async ids => { const x = structuredClone(c); x.refs = ids; await save(x); }, { always: "دکتر پرونده" }));
       root.querySelectorAll("[data-meth]").forEach(b => b.onclick = () => { keep(); payDraft.method = b.dataset.meth; renderSheet(); });
       root.querySelectorAll("[data-reg]").forEach(b => b.onclick = () => { keep(); editRegion = b.dataset.reg; renderSheet(); });
       root.querySelectorAll("[data-dsel]").forEach(s => s.onchange = () => { if (s.dataset.dsel.endsWith("|m") || s.dataset.dsel.endsWith("|y")) { keep(); renderSheet(); } });
@@ -425,7 +430,7 @@ const IMP = (() => {
         const name = (newDraft.name || "").trim(); if (!name) { err = "اسم بیمار را بنویسید."; return render(); }
         const doctor = $("#impNDoc")?.value || newDraft.doctor, id = "imp" + uid();
         const dup = Object.values(cases).find(c => NLU.norm(c.name) === NLU.norm(name));
-        await save({ id, name, phone: (newDraft.phone || "").trim() || null, doctor, createdAt: Date.now(), regions: {}, payments: [], installments: [], opg: [] });
+        await save({ id, name, phone: (newDraft.phone || "").trim() || null, doctor, createdBy: who, createdAt: Date.now(), regions: {}, payments: [], installments: [], opg: [] });
         newDraft = { name: "", phone: "", doctor }; view = "list"; msg = dup ? `ثبت شد. توجه: بیمار دیگری هم با اسم «${esc(name)}» وجود دارد.` : "ثبت شد."; render(); return openCase(id);
       }
     });
@@ -480,6 +485,6 @@ const IMP = (() => {
     LDB.collection("implants").onSnapshot(q => { cases = {}; q.docs.forEach(x => cases[x.id] = x.data()); loadedOnce = true; render(); if (openId && !$("#sheet").hidden && !money) renderSheet(); });
     LDB.doc("implant/settings").onSnapshot(sn => { settings = sn.exists ? sn.data() : { access: {}, cards: [] }; render(); });
   }
-  const badge = () => canMoney(who) ? Object.values(cases).filter(c => !c.archived && fin(c).inst.some(i => i.left > 0 && i.days <= 0)).length : 0;
-  return { start, seed, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin }, files: { IDB, shrink } };
+  const badge = () => canMoney(who) ? Object.values(cases).filter(vis).filter(c => !c.archived && fin(c).inst.some(i => i.left > 0 && i.days <= 0)).length : 0;
+  return { start, seed, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin, visFor }, files: { IDB, shrink } };
 })();

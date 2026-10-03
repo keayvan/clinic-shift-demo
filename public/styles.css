@@ -201,3 +201,17 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .ins-table { border-collapse:collapse; width:100%; font-size:.88rem; }
 .ins-table th, .ins-table td { border-bottom:1px solid var(--line); padding:6px; text-align:right; }
 .ins-table tr:hover { background:var(--bg); }
+
+/* پورتال افراد: صفحهٔ اصلی با دکمه‌ها، و هر دکمه یک برگهٔ تمام‌صفحه باز می‌کند */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:14px 0}
+.tile{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:84px;padding:14px 10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:14px;font-weight:700;cursor:pointer;text-align:center}
+.tile:hover{background:var(--bg)}
+.tile small{font-weight:400;color:var(--muted);font-size:.78rem}
+.tile.attn{border-color:var(--warn)}
+.tile.attn small{color:var(--warn);font-weight:700}
+.tile .bd{position:absolute;top:8px;inset-inline-end:8px;min-width:20px;padding:0 6px;border-radius:999px;background:var(--accent);color:var(--accent-ink);font-size:.75rem;line-height:20px;font-weight:700}
+.sheet-card.page{inset:0;max-height:none;height:100%;width:100%;max-width:none;border-radius:0;transform:none;padding-top:0}
+@media (min-width:700px){.sheet-card.page{inset:0;left:0;top:0;transform:none;width:100%;max-width:none;border-radius:0}}
+.sheet-card.page>*{max-width:780px;margin-inline:auto}
+.pagehead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;background:var(--surface);padding:12px 0;margin-bottom:8px;border-bottom:1px solid var(--line)}
+.pagehead strong{font-size:1.1rem}

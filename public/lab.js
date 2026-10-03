@@ -19,9 +19,44 @@ const LAB = (() => {
   const role = () => (typeof who !== "undefined" && who === "manager") ? "manager" : (byId(who)?.role || "");
   const fdate = at => at ? new Date(at).toLocaleDateString("fa-IR") : "";
   const ftime = at => at ? new Date(at).toLocaleString("fa-IR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-  const list = () => Object.values(orders).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  /* هر سفارش را مدیر و لابراتوار می‌بینند، و از کلینیک فقط دکتر و ثبت‌کنندهٔ سفارش و کسانی که مدیر به آن‌ها ارجاع داده */
+  const visibleFor = (o, id, r) => r === "manager" || r === "lab" || o.doctor === id || o.createdBy === id || (o.refs || []).includes(id);
+  const listAll = () => Object.values(orders).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const list = () => listAll().filter(o => visibleFor(o, typeof who !== "undefined" ? who : "", role()));
   const active = o => o.status !== "delivered";
   const badge = () => list().filter(active).length;
+
+  /* ---------- پیوست فایل: عکس فشرده یا PDF کوچک. ذخیرهٔ دستگاه‌ها فضای محدودی دارد، پس حدها کوچک‌اند ---------- */
+  const MAX_FILES = 4, PDF_MAX = 300 * 1024, ORDER_MAX = 700 * 1024;
+  const bytes = s => Math.round(String(s || "").length * 0.75);
+  const readData = f => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(f); });
+  async function attach(prefix, fileList) {
+    const d = (drafts[prefix] = drafts[prefix] || {}); d.files = d.files || [];
+    for (const f of [...fileList]) {
+      const bad = t => { msgs[prefix] = { bad: true, t }; };
+      if (d.files.length >= MAX_FILES) { bad(`حداکثر ${fa(MAX_FILES)} فایل برای هر سفارش.`); break; }
+      try {
+        let data, type;
+        if (f.type.startsWith("image/")) { data = await IMP.files.shrink(f, 1000, 0.6); type = "image/jpeg"; }
+        else if (f.type === "application/pdf") { if (f.size > PDF_MAX) { bad(`«${f.name}» بزرگ است؛ PDF باید زیر ۳۰۰ کیلوبایت باشد.`); continue; } data = await readData(f); type = f.type; }
+        else { bad(`«${f.name}» عکس یا PDF نیست.`); continue; }
+        if (d.files.reduce((n, x) => n + bytes(x.data), 0) + bytes(data) > ORDER_MAX) { bad("حجم پیوست‌های این سفارش زیاد می‌شود؛ فایل کوچک‌تری بگذار."); continue; }
+        d.files.push({ id: uid(), name: f.name.slice(0, 60), type, data }); msgs[prefix] = null;
+      } catch (e) { bad(`«${f.name}» خوانده نشد.`); }
+    }
+    refresh();
+  }
+  const fileChips = o => (o.files || []).map((f, i) => `<button class="linkbtn" data-lab="file" data-id="${o.id}" data-i="${i}">${f.type === "application/pdf" ? "PDF" : "عکس"} ${fa(i + 1)}</button>`).join(" ");
+  function openFile(id, i) {
+    const o = orders[id], f = o && (o.files || [])[i]; if (!f) return;
+    const canDel = role() === "manager" || o.createdBy === who;
+    Shell.sheet(`<h2>${esc(o.patientName)}</h2><p class="note" style="margin:0 0 8px">${esc(f.name)}</p>
+      ${f.type === "application/pdf" ? `<p><a class="btn primary" href="${f.data}" download="${esc(f.name)}">دانلود PDF</a></p>` : `<img src="${f.data}" alt="${esc(f.name)}" style="width:100%;border-radius:8px;background:#000">`}
+      <div class="row" style="margin-top:10px"><button class="btn quiet" data-close-sheet>بستن</button>${canDel ? `<button class="x" id="labDelFile">حذف این فایل</button>` : ""}</div>`, root => {
+      const b = root.querySelector("#labDelFile");
+      if (b) b.onclick = async () => { b.disabled = true; await db.doc("lab/" + id).set({ ...o, files: o.files.filter((_, k) => k !== i), updatedAt: Date.now() }); Shell.close(); };
+    });
+  }
 
   /* ---------- ثبت و تغییر مرحله ---------- */
   function normalize(d, creator) {
@@ -43,7 +78,7 @@ const LAB = (() => {
     if (n.err) { msgs[prefix] = { bad: true, t: n.err }; return refresh(); }
     const pat = Object.entries(patients).find(([, p]) => NLU.norm(p.name) === NLU.norm(n.ok.patientName));
     const id = uid(), now = Date.now();
-    await db.doc("lab/" + id).set({ id, ...n.ok, patientId: pat ? pat[0] : null, status: "sent", createdAt: now, log: [{ s: "sent", at: now, by: who }] });
+    await db.doc("lab/" + id).set({ id, ...n.ok, patientId: pat ? pat[0] : null, refs: [], files: d.files || [], status: "sent", createdAt: now, log: [{ s: "sent", at: now, by: who }] });
     drafts[prefix] = { doctor: d.doctor }; msgs[prefix] = { t: "سفارش برای لابراتوار ثبت شد." };
     refresh();
   }
@@ -104,6 +139,9 @@ const LAB = (() => {
         <div style="flex:1 1 130px">${L("due", "موعد تحویل (اختیاری)")}<input type="text" id="lab-${prefix}-due" data-f="due" placeholder="مثلاً ۱۴۰۵/۰۷/۲۵" style="width:100%;box-sizing:border-box" value="${esc(d.due || "")}"></div>
       </div>
       <div style="margin-top:8px">${L("note", "توضیح (اختیاری): رنگ، دندان، شرایط خاص")}<textarea id="lab-${prefix}-note" data-f="note" style="width:100%;box-sizing:border-box;min-height:48px">${esc(d.note || "")}</textarea></div>
+      <div style="margin-top:8px"><label class="note" style="display:block" for="lab-${prefix}-file">پیوست (عکس یا PDF کوچک؛ حداکثر ${fa(MAX_FILES)} فایل)</label>
+        <input type="file" id="lab-${prefix}-file" data-labfile="${prefix}" accept="image/*,application/pdf" multiple>
+        ${(d.files || []).length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${d.files.map((f, i) => `<span class="chip assistant">${esc(f.name)} <button class="x" data-lab="rmfile" data-form="${prefix}" data-i="${i}" aria-label="برداشتن">✕</button></span>`).join("")}</div>` : ""}</div>
       ${m ? `<p class="${m.bad ? "warn" : "okline"}" style="margin-top:8px">${esc(m.t)}</p>` : ""}
       <p class="row" style="margin-top:8px"><button class="btn primary" data-lab="new" data-form="${prefix}">ارسال به لابراتوار</button></p></div>`;
   }
@@ -117,6 +155,7 @@ const LAB = (() => {
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><strong>${esc(o.patientName)}</strong><span class="chip ${o.status === "delivered" ? "assistant" : o.status === "ready" || o.status === "received" ? "reception" : "doctor"}">${LABEL[o.status]}</span></div>
       <div class="note">${esc(o.kind)} · دکتر ${esc(nm(o.doctor))} · ثبت ${fdate(o.createdAt)}${o.due ? " · موعد " + esc(o.due) : ""}</div>
       ${o.note ? `<div style="margin:4px 0">${esc(o.note)}</div>` : ""}
+      ${(o.files || []).length ? `<div style="margin:4px 0">${fileChips(o)}</div>` : ""}
       <div class="note" style="margin-top:2px">${esc(steps)}</div>
       <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
         ${nx && canMoveFor(r, nx) ? `<button class="btn primary" data-lab="step" data-id="${o.id}" data-to="${nx}">${BTN[nx]}</button>` : ""}
@@ -139,12 +178,12 @@ const LAB = (() => {
     const act = o => {
       const nx = nextOf(o.status), pv = prevOf(o.status);
       const canDel = r === "manager" || (o.createdBy === who && o.status === "sent");
-      return `<span class="row" style="gap:4px;flex-wrap:wrap;justify-content:center">${nx && canMoveFor(r, nx) ? `<button class="btn primary" style="padding:4px 8px;font-size:.8rem" data-lab="step" data-id="${o.id}" data-to="${nx}">${BTN[nx]}</button>` : ""}${pv && canMoveFor(r, o.status) ? `<button class="btn quiet" style="padding:4px 8px;font-size:.8rem" title="برگرداندن به «${LABEL[pv]}»" data-lab="step" data-id="${o.id}" data-to="${pv}">برگرداندن</button>` : ""}${canDel ? `<button class="x" data-lab="del" data-id="${o.id}">حذف</button>` : ""}</span>`;
+      return `<span class="row" style="gap:4px;flex-wrap:wrap;justify-content:center">${nx && canMoveFor(r, nx) ? `<button class="btn primary" style="padding:4px 8px;font-size:.8rem" data-lab="step" data-id="${o.id}" data-to="${nx}">${BTN[nx]}</button>` : ""}${pv && canMoveFor(r, o.status) ? `<button class="btn quiet" style="padding:4px 8px;font-size:.8rem" title="برگرداندن به «${LABEL[pv]}»" data-lab="step" data-id="${o.id}" data-to="${pv}">برگرداندن</button>` : ""}${r === "manager" ? `<button class="btn quiet" style="padding:4px 8px;font-size:.8rem" data-lab="refer" data-id="${o.id}">ارجاع</button>` : ""}${canDel ? `<button class="x" data-lab="del" data-id="${o.id}">حذف</button>` : ""}</span>`;
     };
     const tr = o => {
       const pid = patientIdOf(o), last = (o.log || []).slice(-1)[0], steps = (o.log || []).map(x => `${LABEL[x.s]}: ${ftime(x.at)}`).join(" · ");
       return `<tr><td>${pid ? `<button class="linkbtn" data-pat="${pid}">${esc(o.patientName)}</button>` : `${esc(o.patientName)} <span class="note">(در فهرست بیماران نیست)</span>`}<div class="note">دکتر ${esc(nm(o.doctor))}</div></td>
-        <td style="text-align:start">${esc(o.kind)}${o.note ? `<div class="note">${esc(o.note)}</div>` : ""}${o.due ? `<div class="note">موعد: ${esc(o.due)}</div>` : ""}</td>
+        <td style="text-align:start">${esc(o.kind)}${o.note ? `<div class="note">${esc(o.note)}</div>` : ""}${o.due ? `<div class="note">موعد: ${esc(o.due)}</div>` : ""}${(o.files || []).length ? `<div>${fileChips(o)}</div>` : ""}${r === "manager" ? `<div class="note">ارجاع: ${esc(REF.names(o.refs))}</div>` : ""}</td>
         <td><span class="chip ${cls(o.status)}" title="${esc(steps)}">${LABEL[o.status]}</span>${last ? `<div class="note">${ftime(last.at)}</div>` : ""}</td>
         <td>${act(o)}</td></tr>`;
     };
@@ -184,7 +223,7 @@ const LAB = (() => {
   /* ---------- پنل دکتر، دستیار و منشی ---------- */
   function staffPanel(id) {
     const r = byId(id)?.role; if (!["doctor", "assistant", "reception"].includes(r)) return "";
-    const mine = list().filter(o => active(o) && (r !== "doctor" || o.doctor === id));
+    const mine = list().filter(active);
     return `<div class="panel"><strong>لابراتوار</strong><p class="note" style="margin:2px 0 8px">کار تازه برای لابراتوار بفرست و مرحلهٔ کارهای قبلی را ببین.</p>${form("t")}
       <div style="margin-top:12px"><strong>${r === "doctor" ? "کارهای من" : "کارهای در جریان"} (${fa(mine.length)})</strong>${mine.length ? table(mine) : '<p class="note">کاری در جریان نیست.</p>'}</div></div>`;
   }
@@ -204,7 +243,8 @@ const LAB = (() => {
       const f = e.target.closest("[data-labform] [data-f]"); if (f) { const p = f.closest("[data-labform]").dataset.labform; (drafts[p] = drafts[p] || {})[f.dataset.f] = f.value; return; }
       if (e.target.id === "labfQ") { flt.q = e.target.value; clearTimeout(start._t); start._t = setTimeout(() => { render(); const el = document.getElementById("labfQ"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 250); }
     });
-    document.addEventListener("change", e => {
+    document.addEventListener("change", async e => {
+      const fi = e.target.closest("[data-labfile]"); if (fi) { const files = [...fi.files], p = fi.dataset.labfile; fi.value = ""; await attach(p, files); return; }
       const f = e.target.closest("[data-labform] [data-f]"); if (f) { const p = f.closest("[data-labform]").dataset.labform; (drafts[p] = drafts[p] || {})[f.dataset.f] = f.value; return; }
       const g = e.target.closest("[data-labf]"); if (!g) return;
       if (g.id === "labfStatus") flt.status = g.value; if (g.id === "labfDoc") flt.doc = g.value;
@@ -217,11 +257,14 @@ const LAB = (() => {
         if (b.dataset.lab === "new") await create(b.dataset.form);
         else if (b.dataset.lab === "step") await move(b.dataset.id, b.dataset.to);
         else if (b.dataset.lab === "del") await remove(b.dataset.id);
+        else if (b.dataset.lab === "refer") { const o = orders[b.dataset.id]; if (o) REF.open("ارجاع سفارش «" + o.patientName + "»", o.refs || [], ids => db.doc("lab/" + o.id).set({ ...o, refs: ids, updatedAt: Date.now() }), { exclude: ["lab"], always: "لابراتوار، دکتر سفارش و ثبت‌کننده" }); }
+        else if (b.dataset.lab === "file") openFile(b.dataset.id, +b.dataset.i);
+        else if (b.dataset.lab === "rmfile") { const d = drafts[b.dataset.form]; if (d && d.files) d.files.splice(+b.dataset.i, 1); refresh(); }
         else if (b.dataset.lab === "demo") await seedDemo();
         else if (b.dataset.lab === "demo-clear") await clearDemo();
       } finally { b.disabled = false; }
     });
   }
-  return { start, tab, portal, staffPanel, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, STATUS, KINDS, DEMO_PLAN } };
+  return { start, tab, portal, staffPanel, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, visibleFor, STATUS, KINDS, DEMO_PLAN } };
 })();
 if (typeof globalThis !== "undefined") globalThis.LAB = LAB;
