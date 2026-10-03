@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.33.0";
+const APP_VERSION = "2.34.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -377,6 +377,7 @@ const Shell = (() => {
   function guide(first) {
     sheet(`<h2>دموی برنامه شیفت کلینیک <span class="note" style="font-weight:400;font-size:.7em">نسخه ${APP_VERSION}</span></h2>
       <p class="lead">این نسخه آزمایشی است. ${SYNC.enabled() ? "این گوشی به سرور کلینیک وصل است و اطلاعات بین گوشی‌های کلینیک مشترک است." : "تا وقتی مدیر این گوشی را به سرور کلینیک وصل نکرده، اطلاعات فقط روی همین گوشی است."} نظرهایی که می‌فرستید و جمله‌هایی که برنامه نفهمیده برای بهتر شدن برنامه به سرور فرستاده می‌شوند.</p>
+      <div id="guideChanges" class="panel" hidden></div>
       <p>از منوی «من:» بالای صفحه می‌توانید جای هر کدام از کارکنان باشید. پیشنهاد می‌کنیم این کارها را به ترتیب امتحان کنید:</p>
       <ol class="steps">
         <li><strong>ساخت برنامه:</strong> با «مدیر مجموعه»، در تب برنامه «ساخت برنامه» و بعد «تأیید و ارسال برای همه» را بزنید.</li>
@@ -389,6 +390,15 @@ const Shell = (() => {
       <p>هر جا نظری داشتید یا چیزی درست کار نکرد، دکمه <strong>نظر</strong> پایین صفحه را بزنید.</p>
       <div class="row" style="margin-top:14px"><button class="btn primary" data-close-sheet>${first ? "شروع" : "بستن"}</button><button class="btn quiet" id="changeUser">اسم کاربری: ${esc(FB.user() || "—")} (تغییر)</button><button class="btn quiet" id="resetDemo">شروع دوباره دمو</button></div>`, root => {
       root.querySelector("#changeUser").onclick = () => askUser(false);
+      /* تغییرات این نسخه نسبت به قبلی + نسخه‌های قبلی (بسته) */
+      fetch("changelog.json").then(r => r.json()).then(cl => {
+        const box = root.querySelector("#guideChanges"); if (!box || !cl.length) return;
+        const cur = cl.find(x => x.version === APP_VERSION) || cl[0], prev = cl.filter(x => x !== cur).slice(0, 8);
+        box.innerHTML = `<strong>چه چیزهایی در نسخه ${esc(cur.version)} عوض شد</strong>` +
+          `<ul style="margin:6px 0 0;padding-inline-start:20px">${(cur.changes || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul>` +
+          (prev.length ? `<details style="margin-top:8px"><summary style="cursor:pointer;font-weight:700">نسخه‌های قبلی</summary>${prev.map(v => `<p class="note" style="margin:8px 0 2px"><strong>نسخه ${esc(v.version)}</strong></p><ul style="margin:0;padding-inline-start:20px">${(v.changes || []).map(i => `<li>${esc(i)}</li>`).join("")}</ul>`).join("")}</details>` : "");
+        box.hidden = false;
+      }).catch(() => {});
       const r = root.querySelector("#resetDemo");
       r.onclick = async () => {
         if (r.dataset.sure !== "1") { r.dataset.sure = "1"; r.textContent = "همه تغییرات پاک شود؟ دوباره بزنید"; return; }
