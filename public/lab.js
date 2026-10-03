@@ -261,7 +261,7 @@ const LAB = (() => {
   }
 
   const demoPanel = () => `<div class="panel"><strong>داده‌های آزمایشی</strong><p class="note" style="margin:4px 0 8px">برای دیدن کارکرد لابراتوار، چند سفارش در مرحله‌های مختلف می‌سازد (${fa(list().filter(o => o.demo).length)} سفارش آزمایشی الان هست). بعداً با «پاک کردن» همه‌شان برداشته می‌شود و سفارش‌های واقعی دست نمی‌خورند.</p>
-        <p class="row"><button class="btn" data-lab="demo">ساخت چند سفارش آزمایشی</button><button class="btn quiet" data-lab="demo-clear">پاک کردن سفارش‌های آزمایشی</button></p></div>`;
+        <p class="row"><button class="btn" data-lab="demo">ساخت چند سفارش آزمایشی</button><button class="btn quiet" data-lab="demo-clear">پاک کردن سفارش‌های آزمایشی</button></p>${typeof dnote === "function" ? dnote("lab") : ""}</div>`;
 
   /* ---------- پنل دکتر، دستیار و منشی ---------- */
   function staffPanel(id, part) {
@@ -279,6 +279,9 @@ const LAB = (() => {
       ${mine.length ? mine.map(card).join("") : '<p class="note">برای این بیمار کاری به لابراتوار نرفته.</p>'}
       <div style="margin-top:8px">${form("s", { patient: p.name, lock: true, doctor: p.doctor })}</div></div></details>`;
   }
+
+  /* پیام نتیجه زیر پنل داده آزمایشی (تابع‌ها در app.js) */
+  const note = (k, t, bad) => { if (typeof dmsg === "function") { dmsg(k, t, bad); if (typeof render === "function") render(); } };
 
   /* ---------- رویدادها ---------- */
   function start() {
@@ -308,8 +311,8 @@ const LAB = (() => {
         else if (b.dataset.lab === "rec") openPatientSheet(b.dataset.pid);
         else if (b.dataset.lab === "file") openFile(b.dataset.id, +b.dataset.i);
         else if (b.dataset.lab === "rmfile") { const d = drafts[b.dataset.form]; if (d && d.files) d.files.splice(+b.dataset.i, 1); refresh(); }
-        else if (b.dataset.lab === "demo") await seedDemo();
-        else if (b.dataset.lab === "demo-clear") await clearDemo();
+        else if (b.dataset.lab === "demo") { await seedDemo(); note("lab", "۱۰ سفارش آزمایشی در مرحله‌های مختلف ساخته شد (از تب «لابراتوار» یا پورتال دلارام ببین).", false); }
+        else if (b.dataset.lab === "demo-clear") { const n = await clearDemo(); note("lab", n ? fa(n) + " سفارش آزمایشی پاک شد." : "سفارش آزمایشی‌ای نبود؛ چیزی پاک نشد.", true); }
       } finally { b.disabled = false; }
     });
   }
