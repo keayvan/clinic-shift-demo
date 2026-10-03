@@ -127,6 +127,30 @@ const LAB = (() => {
   const counts = () => { const c = Object.fromEntries(ORDER.map(s => [s, 0])); list().forEach(o => c[o.status]++); return c; };
   const chips = () => { const c = counts(); return `<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">${STATUS.map(([k, l]) => `<span class="chip ${k === "delivered" ? "assistant" : "doctor"}">${l}: ${fa(c[k])}</span>`).join("")}</div>`; };
 
+  /* همهٔ سفارش‌ها در یک جدول؛ کلیک روی اسم بیمار پروندهٔ او را باز می‌کند */
+  function patientIdOf(o) {
+    if (o.patientId && patients[o.patientId]) return o.patientId;
+    const n = NLU.norm(o.patientName), e = Object.entries(patients).find(([, p]) => NLU.norm(p.name) === n);
+    return e ? e[0] : null;
+  }
+  function table(rows) {
+    const r = role();
+    const cls = st => st === "delivered" ? "assistant" : st === "ready" || st === "received" ? "reception" : "doctor";
+    const act = o => {
+      const nx = nextOf(o.status), pv = prevOf(o.status);
+      const canDel = r === "manager" || (o.createdBy === who && o.status === "sent");
+      return `<span class="row" style="gap:4px;flex-wrap:wrap;justify-content:center">${nx && canMoveFor(r, nx) ? `<button class="btn primary" style="padding:4px 8px;font-size:.8rem" data-lab="step" data-id="${o.id}" data-to="${nx}">${BTN[nx]}</button>` : ""}${pv && canMoveFor(r, o.status) ? `<button class="btn quiet" style="padding:4px 8px;font-size:.8rem" title="برگرداندن به «${LABEL[pv]}»" data-lab="step" data-id="${o.id}" data-to="${pv}">برگرداندن</button>` : ""}${canDel ? `<button class="x" data-lab="del" data-id="${o.id}">حذف</button>` : ""}</span>`;
+    };
+    const tr = o => {
+      const pid = patientIdOf(o), last = (o.log || []).slice(-1)[0], steps = (o.log || []).map(x => `${LABEL[x.s]}: ${ftime(x.at)}`).join(" · ");
+      return `<tr><td>${pid ? `<button class="linkbtn" data-pat="${pid}">${esc(o.patientName)}</button>` : `${esc(o.patientName)} <span class="note">(در فهرست بیماران نیست)</span>`}<div class="note">دکتر ${esc(nm(o.doctor))}</div></td>
+        <td style="text-align:start">${esc(o.kind)}${o.note ? `<div class="note">${esc(o.note)}</div>` : ""}${o.due ? `<div class="note">موعد: ${esc(o.due)}</div>` : ""}</td>
+        <td><span class="chip ${cls(o.status)}" title="${esc(steps)}">${LABEL[o.status]}</span>${last ? `<div class="note">${ftime(last.at)}</div>` : ""}</td>
+        <td>${act(o)}</td></tr>`;
+    };
+    return `<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>بیمار</th><th>کار</th><th>وضعیت</th><th></th></tr></thead><tbody>${rows.map(tr).join("")}</tbody></table></div>`;
+  }
+
   /* ---------- تب مدیر ---------- */
   function tab() {
     const docs = ofRole("doctor"), q = NLU.norm(flt.q || "");
@@ -139,7 +163,7 @@ const LAB = (() => {
         ${sel("labfDoc", "دکتر", op("", "همهٔ دکترها", flt.doc) + docs.map(d => op(d.id, esc(d.name), flt.doc)).join(""))}
         <div style="flex:1 1 130px"><label class="note" style="display:block" for="labfQ">اسم بیمار</label><input type="text" id="labfQ" data-labf="labfQ" style="width:100%;box-sizing:border-box" value="${esc(flt.q)}"></div>
       </div></div>
-      <div class="panel">${rows.length ? rows.map(card).join("") : `<p class="note">${list().length ? "موردی با این فیلتر نیست." : "هنوز کاری برای لابراتوار ثبت نشده."}</p>`}</div>
+      <div class="panel">${rows.length ? table(rows) : `<p class="note">${list().length ? "موردی با این فیلتر نیست." : "هنوز کاری برای لابراتوار ثبت نشده."}</p>`}</div>
       <div class="panel"><strong>سفارش تازه برای لابراتوار</strong><div style="margin-top:8px">${form("m")}</div></div>
       <div class="panel"><strong>داده‌های آزمایشی</strong><p class="note" style="margin:4px 0 8px">برای دیدن کارکرد لابراتوار، چند سفارش در مرحله‌های مختلف می‌سازد (${fa(list().filter(o => o.demo).length)} سفارش آزمایشی الان هست). بعداً با «پاک کردن» همه‌شان برداشته می‌شود و سفارش‌های واقعی دست نمی‌خورند.</p>
         <p class="row"><button class="btn" data-lab="demo">ساخت چند سفارش آزمایشی</button><button class="btn quiet" data-lab="demo-clear">پاک کردن سفارش‌های آزمایشی</button></p></div>`;
@@ -148,13 +172,13 @@ const LAB = (() => {
   /* ---------- پورتال لابراتوار (دلارام) ---------- */
   function portal(id) {
     const q = NLU.norm(flt.q || ""), all = list().filter(o => !q || NLU.norm(o.patientName).includes(q));
-    const sec = (title, st, hint) => { const rows = all.filter(o => o.status === st); return `<div class="panel"><strong>${title} (${fa(rows.length)})</strong>${hint ? `<p class="note" style="margin:2px 0 0">${hint}</p>` : ""}${rows.length ? rows.map(card).join("") : '<p class="note" style="margin-top:6px">موردی نیست.</p>'}</div>`; };
+    const sec = (title, st, hint) => { const rows = all.filter(o => o.status === st); return `<div class="panel"><strong>${title} (${fa(rows.length)})</strong>${hint ? `<p class="note" style="margin:2px 0 0">${hint}</p>` : ""}${rows.length ? table(rows) : '<p class="note" style="margin-top:6px">موردی نیست.</p>'}</div>`; };
     const done = all.filter(o => o.status === "delivered").slice(0, 15);
     return `<div class="panel"><div class="row" style="flex-wrap:wrap;gap:8px;align-items:flex-end"><div style="flex:1 1 160px"><label class="note" style="display:block" for="labfQ">جستجوی اسم بیمار</label><input type="text" id="labfQ" data-labf="labfQ" style="width:100%;box-sizing:border-box" value="${esc(flt.q)}"></div></div></div>` +
       sec("جدید: از کلینیک رسیده", "sent", "وقتی کار را تحویل گرفتی «دریافت شد» را بزن.") +
       sec("در لابراتوار", "inlab", "وقتی ساخته شد و فرستادی «آماده شد و فرستاده شد» را بزن.") +
       sec("فرستاده‌شده، منتظر رسیدن به کلینیک", "ready") + sec("رسیده به کلینیک", "received") +
-      (done.length ? `<div class="panel"><strong>تحویل‌شده‌های اخیر</strong>${done.map(card).join("")}</div>` : "");
+      (done.length ? `<div class="panel"><strong>تحویل‌شده‌های اخیر</strong>${table(done)}</div>` : "");
   }
 
   /* ---------- پنل دکتر، دستیار و منشی ---------- */
@@ -162,11 +186,11 @@ const LAB = (() => {
     const r = byId(id)?.role; if (!["doctor", "assistant", "reception"].includes(r)) return "";
     const mine = list().filter(o => active(o) && (r !== "doctor" || o.doctor === id));
     return `<div class="panel"><strong>لابراتوار</strong><p class="note" style="margin:2px 0 8px">کار تازه برای لابراتوار بفرست و مرحلهٔ کارهای قبلی را ببین.</p>${form("t")}
-      <div style="margin-top:12px"><strong>${r === "doctor" ? "کارهای من" : "کارهای در جریان"} (${fa(mine.length)})</strong>${mine.length ? mine.map(card).join("") : '<p class="note">کاری در جریان نیست.</p>'}</div></div>`;
+      <div style="margin-top:12px"><strong>${r === "doctor" ? "کارهای من" : "کارهای در جریان"} (${fa(mine.length)})</strong>${mine.length ? table(mine) : '<p class="note">کاری در جریان نیست.</p>'}</div></div>`;
   }
   /* در پروندهٔ بیمار: ارسال کار به لابراتوار و وضعیت کارهای همین بیمار */
   function sheetPanel(p) {
-    const r = role(); if (!["doctor", "assistant", "reception"].includes(r)) return "";
+    const r = role(); if (!CLINIC.includes(r)) return "";
     const mine = list().filter(o => o.patientId ? o.patientId === p.id : NLU.norm(o.patientName) === NLU.norm(p.name));
     return `<details style="margin-top:10px" ${mine.some(active) ? "open" : ""}><summary style="cursor:pointer;font-weight:700">لابراتوار${mine.length ? " (" + fa(mine.length) + ")" : ""}</summary>
       ${mine.length ? mine.map(card).join("") : '<p class="note">برای این بیمار کاری به لابراتوار نرفته.</p>'}
