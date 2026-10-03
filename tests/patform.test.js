@@ -76,6 +76,11 @@ eq("consent paragraphs", PF.CONSENT.length, 2);
   const d2 = PF.demo({ name: "پ", plan: [] }, () => 0.1);
   eq("demo phone format", /^09\d{9}$/.test(d2.phone), true);
   eq("demo national id 10 digits", /^\d{10}$/.test(d2.nationalId), true);
+  const full = PF.demo({ name: "ت", plan: [] }, () => 0.9);
+  const empties = ["fileNo", "nationalId", "fatherName", "birthYear", "age", "job", "address", "phone", "phoneHome", "phoneEmerg", "referral", "medications", "onMeds", "pregnant", "miscarriage"].filter(k => full[k] === undefined || full[k] === null || full[k] === "" || (Array.isArray(full[k]) && !full[k].length));
+  eq("demo leaves no empty field", empties, []);
+  eq("demo fills allergy/condition answer", [!!(full.allergies || full.allergyFlags?.length), !!(full.conditions || full.condFlags?.length)], [true, true]);
+  eq("demo fills whole insurance", ["name", "number", "supplementary", "letterExpiry", "franchise", "cap", "opg"].filter(k => !full.insurance[k] && full.insurance.name !== "آزاد"), []);
   const d3 = PF.demo(d2, () => 0.9);
   eq("demo is idempotent on filled fields", [d3.fileNo, d3.phone, d3.nationalId], [d2.fileNo, d2.phone, d2.nationalId]);
 }

@@ -126,17 +126,19 @@
     if (!ins.name) ins.name = pick(["تامین‌اجتماعی", "بیمهٔ ملی", "رازی", "آزاد"]);
     if (ins.name !== "آزاد") {
       ins.number = ins.number || digits(9);
-      ins.supplementary = ins.supplementary || pick(["دانا", "آسیا", "ایران", ""]);
+      ins.supplementary = ins.supplementary || pick(["دانا", "آسیا", "ایران", "ندارد"]);
       ins.letterExpiry = ins.letterExpiry || `${py}/${String(int(1, 12)).padStart(2, "0")}/${String(int(1, 28)).padStart(2, "0")}`;
       ins.franchise = ins.franchise || pick(["۱۰٪", "۲۰٪", "۳۰٪"]);
       ins.cap = ins.cap || pick([40e6, 50e6, 60e6]);
       ins.opg = ins.opg || pick(["دارد", "ندارد"]);
     }
-    if (!arr(o.allergyFlags).length && rnd() < .3) o.allergyFlags = [pick(ALLERGY)[0]];
-    if (!arr(o.condFlags).length && rnd() < .5) o.condFlags = [pick(COND)[0]];
+    /* همه‌چیز پر می‌شود؛ «ندارد» هم یک پاسخ است تا پرونده هیچ جای خالی نداشته باشد */
+    if (!arr(o.allergyFlags).length && !o.allergies) { if (rnd() < .3) o.allergyFlags = [pick(ALLERGY)[0]]; else o.allergies = "ندارد"; }
+    if (!arr(o.condFlags).length && !o.conditions) { if (rnd() < .5) o.condFlags = [pick(COND)[0]]; else o.conditions = "ندارد"; }
     if (o.onMeds === undefined || o.onMeds === null) o.onMeds = rnd() < .35;
-    if (o.onMeds && !o.medications) o.medications = pick(["آسپرین", "متفورمین", "لوزارتان", "لووتیروکسین"]);
-    if (o.pregnant === undefined) o.pregnant = null;
+    if (!o.medications) o.medications = o.onMeds ? pick(["آسپرین", "متفورمین", "لوزارتان", "لووتیروکسین"]) : "ندارد";
+    if (o.pregnant === undefined || o.pregnant === null) o.pregnant = false;
+    if (o.miscarriage === undefined || o.miscarriage === null) o.miscarriage = false;
     return o;
   }
 

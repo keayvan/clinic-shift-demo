@@ -179,12 +179,14 @@ function render(){
   const app=$("#app");
   if(!cfg){app.innerHTML='<div class="panel">هنوز کارکنان تعریف نشده‌اند.</div>';return}
   renderWho();
+  const keepY=window.scrollY;
   const oldTabs=app.querySelector(".tabs"); if(oldTabs) tabScroll=oldTabs.scrollLeft;
   app.innerHTML = who==="manager"?managerView():staffView(who);
   const newTabs=app.querySelector(".tabs");
   if(newTabs){ newTabs.scrollLeft=tabScroll; newTabs.querySelector('[aria-selected="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}); }
   syncStaffPage();
   bind();
+  if(keepY>0&&Math.abs(window.scrollY-keepY)>2) scrollTo(0,keepY);   /* با هر به‌روزرسانی پس‌زمینه صفحه به بالا نپرد */
 }
 
 /* ---------- staff view ---------- */
@@ -985,20 +987,22 @@ async function ruleApply(){
 /* ---------- داده آزمایشی: کارکنان و بیماران (تعداد قابل‌تنظیم، پیش‌فرض = تعداد فعلی) ---------- */
 const DEMO_FIRST=["علی","مریم","رضا","زهرا","حسین","سارا","محمد","نرگس","امیر","فاطمه","کامران","لیلا","پویا","شیما","مهدی","الهام","بابک","نازنین","سعید","مینا"];
 const DEMO_LAST=["محمدی","کریمی","رحیمی","حسینی","نوری","صادقی","جلالی","قاسمی","موسوی","اکبری","رضایی","احمدی","یزدانی","کاظمی","فرهادی"];
+/* پیش‌فرض تعدادها = ترکیب اولیهٔ کلینیک (۸ دکتر، ۱۰ دستیار، ۵ منشی، ۱ بیمه، ۱ لابراتوار، ۱۰ بیمار، ۱۰ کالا، ۳ هفته)؛ مستقل از اینکه الان چه چیزی در اپ هست، تا بعد از «شروع تمیز» هم صفر نشود */
+const DEMO_BASE={sd:8,sa:10,sr:5,si:1,sl:1,pn:10,vn:10,wn:3};
 let demoN={};
 const demoName=()=>DEMO_FIRST[Math.floor(Math.random()*DEMO_FIRST.length)]+" "+DEMO_LAST[Math.floor(Math.random()*DEMO_LAST.length)];
-function demoCount(key,def){ const v=demoN[key]; return v===undefined?def:v }
+function demoCount(key,def){ const v=demoN[key]; return v===undefined?(DEMO_BASE[key]??def):v }
 function demoNumRow(key,label,def){
   return `<div style="flex:1 1 90px"><label class="note" for="dn-${key}" style="display:block">${label}</label><input type="number" id="dn-${key}" data-dn="${key}" min="0" max="60" inputmode="numeric" value="${demoCount(key,def)}" style="width:100%;box-sizing:border-box"></div>`;
 }
 function staffDemoPanel(){
   const n=r=>ofRole(r).length;
-  return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض همان تعداد فعلی است). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
+  return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض: ترکیب اولیهٔ کلینیک). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}${demoNumRow("si","مسئول بیمه",n("insurance"))}${demoNumRow("sl","لابراتوار",n("lab"))}</div>
     <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
 }
 async function staffDemoRun(){
-  const want={doctor:+demoCount("sd",ofRole("doctor").length)||0,assistant:+demoCount("sa",ofRole("assistant").length)||0,reception:+demoCount("sr",ofRole("reception").length)||0,insurance:+demoCount("si",ofRole("insurance").length)||0,lab:+demoCount("sl",ofRole("lab").length)||0};
+  const want={doctor:+demoCount("sd")||0,assistant:+demoCount("sa")||0,reception:+demoCount("sr")||0,insurance:+demoCount("si")||0,lab:+demoCount("sl")||0};
   const pick=a=>a[Math.floor(Math.random()*a.length)];
   const c=structuredClone(cfg), before=new Set(c.staff.map(x=>x.id)), actions=[];
   for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
@@ -1051,11 +1055,11 @@ async function wipeAll(){
 let demoMsg="";
 const INV_POOL=[["آمالگام","ویال"],["کامپوزیت دندانی","بسته"],["بی‌حسی لیدوکائین","ویال"],["گاز استریل","بسته"],["دستکش لاتکس","جعبه"],["ماسک جراحی","جعبه"],["پودر جرمگیری","بسته"],["روکش موقت","بسته"],["نخ بخیه","بسته"],["مته دندانپزشکی","عدد"],["سیمان گلاس‌آینومر","بسته"],["ایمپلنت تیتانیوم","عدد"],["غشای استخوانی","بسته"],["فیلر پالپ","بسته"],["نوار ماتریکس","بسته"],["سرنگ یک‌بارمصرف","جعبه"],["بِرِکت ارتودنسی","بسته"],["قالب‌گیری آلژینات","بسته"],["آینه دندانپزشکی","عدد"],["محلول ضدعفونی","بطری"]];
 function inventoryDemoPanel(){
-  return `<div class="panel"><strong>داده آزمایشی: انبار</strong><p class="note" style="margin:2px 0 6px">تعداد کالای جدید (پیش‌فرض همان تعداد فعلی). بعضی‌شان عمداً کم‌موجودی ساخته می‌شوند تا هشدار انبار دیده شود.</p>
-    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("vn","تعداد کالا",Object.keys(inventory).length||10)}<button class="btn" data-act="inv-demo">افزودن کالای آزمایشی</button><button class="btn quiet" data-act="inv-demo-clear">پاک کردن کالاهای آزمایشی</button></div>${demoMsg?`<p class="okline" style="margin-top:6px">${esc(demoMsg)}</p>`:""}</div>`;
+  return `<div class="panel"><strong>داده آزمایشی: انبار</strong><p class="note" style="margin:2px 0 6px">تعداد کالای جدید (پیش‌فرض: ترکیب اولیهٔ کلینیک). بعضی‌شان عمداً کم‌موجودی ساخته می‌شوند تا هشدار انبار دیده شود.</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("vn","تعداد کالا",10)}<button class="btn" data-act="inv-demo">افزودن کالای آزمایشی</button><button class="btn quiet" data-act="inv-demo-clear">پاک کردن کالاهای آزمایشی</button></div>${demoMsg?`<p class="okline" style="margin-top:6px">${esc(demoMsg)}</p>`:""}</div>`;
 }
 async function inventoryDemoRun(){
-  const n=Math.min(60,Math.max(0,+demoCount("vn",Object.keys(inventory).length||10)||0));
+  const n=Math.min(60,Math.max(0,+demoCount("vn")||0));
   for(let i=0;i<n;i++){
     const [name,unit]=INV_POOL[Math.floor(Math.random()*INV_POOL.length)], minQty=5+Math.floor(Math.random()*40), qty=Math.random()<.3?Math.floor(Math.random()*minQty):minQty+Math.floor(Math.random()*minQty*2), id="inv"+uid()+i;
     const it={id,demo:true,name,unit,qty,minQty,updatedAt:Date.now()}; await db.doc("inventory/"+id).set(it); inventory[id]=it;
@@ -1098,14 +1102,14 @@ function apptDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: نوبت‌ها</strong><p class="note" style="margin:2px 0 6px">برای شنبه تا پنج‌شنبهٔ این هفته، ۲ تا ۵ نوبت تصادفی برای هر دکتر.</p><p class="row"><button class="btn" data-act="ap-demo">افزودن نوبت‌های آزمایشی این هفته</button><button class="btn quiet" data-act="ap-demo-clear">پاک کردن نوبت‌های آزمایشی</button></p></div>`;
 }
 function patientDemoPanel(){
-  return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض همان تعداد فعلی است). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
-    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",Object.keys(patients).length)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button><button class="btn quiet" data-act="pat-demo-clear">پاک کردن بیماران آزمایشی</button></div>
+  return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض: ترکیب اولیهٔ کلینیک). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",10)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button><button class="btn quiet" data-act="pat-demo-clear">پاک کردن بیماران آزمایشی</button></div>
     <p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران موجود</button></p>
     ${patMsg?`<p class="okline" style="margin-top:6px">${patMsg}</p>`:""}</div>`;
 }
 async function patientDemoRun(){
   const docs=ofRole("doctor"); if(!docs.length){ patMsg="اول دکتر اضافه کن."; return render() }
-  const n=Math.min(200,Math.max(0,+demoCount("pn",Object.keys(patients).length)||0));
+  const n=Math.min(200,Math.max(0,+demoCount("pn")||0));
   const TXS=[["root_canal","عصب‌کشی"],["scaling","جرمگیری"],["extraction","کشیدن دندان"],["crown","روکش"],["filling","پرکردن"],["checkup","معاینه"]];
   const pick=a=>a[Math.floor(Math.random()*a.length)]; let nl=0, ni=0;
   for(let i=0;i<n;i++){
@@ -2769,7 +2773,7 @@ async function act(a,btn){
   if(a==="pat-demo-fill"){
     btn.disabled=true; let n=0;
     for(const [id,p] of Object.entries(patients)){ const q=PF.demo(p); if(JSON.stringify(q)!==JSON.stringify(p)){ await db.doc("patients/"+id).set(q); patients[id]=q; n++ } }
-    patMsg=`اطلاعات ${fa(n)} بیمار تکمیل شد (فقط جاهای خالی).`; return render();
+    patMsg=`اطلاعات همهٔ ${fa(Object.keys(patients).length)} بیمار کامل است (${fa(n)} بیمار تغییر کرد؛ فقط جاهای خالی پر شد).`; return render();
   }
   if(a==="pat-filter-clear"){patSearch="";patFilter={doc:"",plan:"",sort:"new"};return render()}
 }
