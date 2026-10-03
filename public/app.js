@@ -759,7 +759,7 @@ function openCalDay(iso){
   const sh=inf.shifts.length?inf.shifts.map(r=>`<div style="border-top:1px solid var(--line);padding:8px 0"><strong>${r.sn}</strong>
     ${r.pairs.map(p=>`<div>${esc(nm(p.d))} <span class="note">${p.u?"یونیت "+fa(p.u)+"، ":""}دستیار:</span> ${p.a?esc(nm(p.a)):"—"}</div>`).join("")}
     ${r.rec.length?`<div><span class="note">منشی:</span> ${r.rec.map(x=>esc(nm(x))).join("، ")}</div>`:""}
-    ${r.free.length?`<div class="note">آنکال: ${r.free.map(x=>esc(nm(x))).join("، ")}</div>`:""}</div>`).join(""):`<p class="note">برای این روز شیفتی در برنامه نیست.</p>`;
+    ${r.free.length?`<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:4px"><span class="note">آنکال (حضوری نیستند؛ در صورت نیاز خبر می‌شوند):</span>${r.free.filter(x=>byId(x)).map(x=>`<button class="btn quiet" data-prof="${x}" style="padding:2px 10px">${esc(nm(x))}</button>`).join("")}</div>`:""}</div>`).join(""):`<p class="note">برای این روز شیفتی در برنامه نیست.</p>`;
   const byDoc={}; inf.list.forEach(([id,a])=>(byDoc[a.doctor]=byDoc[a.doctor]||[]).push([id,a]));
   const pts=inf.list.length?Object.entries(byDoc).map(([doc,rows])=>`<div style="border-top:1px solid var(--line);padding:8px 0"><strong>${esc(nm(doc))}</strong> <span class="note">(${fa(rows.length)} بیمار)</span>
     ${rows.map(([id,a])=>`<div class="row" style="justify-content:space-between;padding:3px 0"><span>${a.time?`<span class="note">${esc(a.time)}</span> `:""}<button class="linkname" data-appat="${id}">${esc(a.name)}</button>${a.note?` <span class="note">— ${esc(a.note)}</span>`:""}<span class="note">${stl[a.status]||""}</span></span></div>`).join("")}</div>`).join(""):`<p class="note">نوبتی ثبت نشده.</p>`;
@@ -804,6 +804,15 @@ function reportTab(){
 
 function missingList(){return (cfg.staff||[]).filter(s=>s.role!=="insurance"&&s.role!=="lab"&&!avail[s.id]?.confirmed)}
 
+/* آنکال‌ها در تخته جا نمی‌گیرند؛ یک پیوند در سرتیتر روز، برگهٔ همان روز را (با آنکال‌ها به‌صورت دکمه) باز می‌کند */
+function weekDateOf(k,off=0){
+  const d0=new Date(); d0.setHours(12,0,0,0); const diff=(d0.getDay()+1)%7; d0.setDate(d0.getDate()+(diff===6?1:-diff)+7*off);
+  const i=DAYS.findIndex(([x])=>x===k); d0.setDate(d0.getDate()+i); return d0;
+}
+function ocLink(k){
+  const ids=new Set(); for(const [sk] of SHIFTS) for(const x of (sched?.slots?.[k+"_"+sk]?.free||[])) if(byId(x)) ids.add(x);
+  return ids.size?` <button class="linkname oclink" data-oncall-day="${k}">آنکال (${fa(ids.size)})</button>`:"";
+}
 function schedTab(){
   const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance"&&s.role!=="lab").length;
   const openAl=!!sched&&((sched.alerts||[]).some(a=>!a.resolved));
@@ -819,14 +828,13 @@ function schedTab(){
   if(!sched) return h+`<p class="note">وقتی حضورها رسید، «ساخت برنامه» را بزنید. برنامه با قوانین بخش «قوانین» چیده می‌شود.</p>`;
   {let used=0,tot=0;for(const k in sched.slots){used+=sched.slots[k].pairs.length;tot+=cfg.settings.chairs}
    h+=`<p><strong>پر بودن یونیت‌ها در هفته: ${fa(Math.round(100*used/Math.max(tot,1)))}٪</strong> <span class="note">(${fa(used)} از ${fa(tot)} یونیت‌شیفت)</span></p>`;}
-  h+=`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
+  h+=`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}${ocLink(k)}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
     const sl=sched.slots?.[k+"_"+sk]||{pairs:[],reception:[],free:[]};
     const u=sl.pairs.length,ch=cfg.settings.chairs;
     let c=`<div class="shift"><h4>${sn}<span class="units ${u>=ch?"full":"gap"}">${fa(u)} از ${fa(ch)} یونیت</span></h4>`;
     if(!sl.pairs.length) c+=`<p class="note" style="margin:0">دکتری نیست</p>`;
     for(const p of sl.pairs) c+=`<div class="pair">${p.u?`<span class="unitno" title="یونیت">${fa(p.u)}</span>`:""}<span class="chip doctor">${esc(nm(p.d))}${spec(p.d)?`<span class="spec">${esc(spec(p.d))}</span>`:""}</span><span class="link"></span>${p.a?`<span class="chip assistant">${esc(nm(p.a))}</span>`:`<span class="chip missing">بدون دستیار</span>`}</div>`;
     c+=`<div class="pair">${sl.reception.length?sl.reception.map(r=>`<span class="chip reception">${esc(nm(r))}</span>`).join(""):`<span class="chip missing">بدون منشی</span>`}</div>`;
-    {const oc=(sl.free||[]).filter(x=>byId(x)); if(oc.length) c+=`<div class="sub"><strong>آنکال</strong> (حضوری نیستند؛ در صورت نیاز خبر می‌شوند): ${oc.map(x=>esc(nm(x))).join("، ")}</div>`;}
     return c+`</div>`;
   }).join("")+`</div></section>`).join("")+`</div>`;
   h+=conflictBanner();
@@ -2805,6 +2813,7 @@ function bind(){
   });
   document.querySelectorAll("[data-seen-one]").forEach(b=>b.onclick=()=>{markSeen(who,b.dataset.seenOne);render()});
   document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open; if(d.open&&d.dataset.al.startsWith("ok-")) markSeen(who,d.dataset.al)});
+  document.querySelectorAll("[data-oncall-day]").forEach(b=>b.onclick=()=>openCalDay(isoOf(weekDateOf(b.dataset.oncallDay))));
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
   document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
