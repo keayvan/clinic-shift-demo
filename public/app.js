@@ -50,7 +50,7 @@ function todayJalali(){ const d=new Date(); return gregorianToJalali(d.getFullYe
 
 let db=null, sample=true, downloads=true;
 let cfg=null, avail={}, sched=null, archive={}, patients={}, inventory={}, appts={}, loaded={cfg:false,avail:false,sched:false};
-let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=false;
+let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=true;
 let invDraft={name:"",unit:"",qty:"",minQty:""}, invErr="";
 let apptDraft={name:"",doctor:"",jy:null,jm:null,jd:null,time:"",note:""}, apptErr="", apptMsg="";
 let patSearch="", patFilter={doc:"",plan:"",sort:"new"};
@@ -243,31 +243,59 @@ function staffAvailHtml(id){
 function staffPages(id){
   const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
-  add("shifts","شیفت‌های من",ms?`<div class="panel"><strong>شیفت‌های تو ${sched.published?`(نسخه ${fa(sched.rev||1)})`:`<span class="note">(پیش‌نویس؛ هنوز مدیر تأیید و ارسال نکرده)</span>`}</strong>`+
+  add("shifts","برنامه کامل و خروجی",ms?`<div class="panel"><strong>شیفت‌های تو ${sched.published?`(نسخه ${fa(sched.rev||1)})`:`<span class="note">(پیش‌نویس؛ هنوز مدیر تأیید و ارسال نکرده)</span>`}</strong>`+
       (ms.length?`<ul>${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="note">در این برنامه شیفتی برایت نیست.</p>`)+
       (sched.published?`<p class="note" style="margin:8px 0 4px">برنامه کامل کلینیک:</p><div class="row">${exportBtns()}</div>`:"")+`${exportMsg?`<p class="warn" style="margin-top:8px">${esc(exportMsg)}</p>`:""}</div>`+monthPanel(id):"");
   const done=!!a?.confirmed&&!p;
   add("avail","حضور هفته بعد",staffAvailHtml(id)+myRequestsPanel(id),{attn:!done,sub:done?"ثبت شد":"هنوز نفرستادی"});
-  add("patients","بیماران من",patientsPanel(id));
+  add("patients","بیماران من",patientsPanel(id,"list"));
+  add("newpat","بیمار جدید",patientsPanel(id,"new"));
   add("intake","پذیرش بیمار جدید",patientIntakePanel(id));
   add("appts","نوبت‌ها",apptDoctorPanel(id)+apptAssistantPanel(id)+apptBookingPanel(id));
-  const nl=LAB.badge(); add("lab","لابراتوار",LAB.staffPanel(id),{badge:nl});
+  const nl=LAB.badge(), isDoc=byId(id)?.role==="doctor";
+  add("laborder","سفارش به لابراتوار",LAB.staffPanel(id,"order"));
+  add("labmine",isDoc?"کارهای لابراتوار من":"کارهای لابراتوار",LAB.staffPanel(id,"mine"),{badge:nl});
   add("implant","ایمپلنت",IMP.staffPanel(id));
   return pages;
+}
+/* هشدارهای مهم: کادر قرمز بالای صفحهٔ اصلی و بالای هر برگهٔ پورتال */
+function staffAlerts(id){
+  const a=avail[id], p=staffParse[id], items=[];
+  if(sched&&staffPage!=="avail"&&!(a?.confirmed&&!p)) items.push(`<div class="panel"><strong>حضور هفته بعد را هنوز نفرستاده‌ای.</strong> <button class="btn quiet" data-page="avail">ثبت حضور</button></div>`);
+  const body=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+items.join("");
+  return body?`<div class="alertbox" role="alert"><div class="alerthead">⚠ مهم</div>${body}</div>`:"";
+}
+/* شیفت‌های من و بیماران امروز، مستقیم روی صفحهٔ اصلی */
+function myShiftsHome(id){
+  const ms=myShifts(id); if(ms==null) return "";
+  const dn=(DAYS.find(([k])=>k===["sun","mon","tue","wed","thu","fri","sat"][new Date().getDay()])||[])[1];
+  const li=ms.map(x=>`<li${dn&&x.startsWith(dn)?' class="today"':""}>${esc(x)}${dn&&x.startsWith(dn)?" <b>(امروز)</b>":""}</li>`).join("");
+  return `<div class="panel"><strong>شیفت‌های من ${sched.published?"":`<span class="note">(پیش‌نویس؛ هنوز تأیید نشده)</span>`}</strong>${ms.length?`<ul class="clean shiftlist">${li}</ul>`:`<p class="note" style="margin:6px 0 0">در این برنامه شیفتی برایت نیست.</p>`}</div>`;
+}
+function todayPatientsPanel(id){
+  const r=byId(id)?.role; if(!["doctor","assistant","reception"].includes(r)) return "";
+  let docs=null;
+  if(r==="doctor") docs=[id];
+  else if(r==="assistant") docs=ofRole("doctor").filter(d=>(cfg.pairings?.[d.id]||[]).includes(id)).map(d=>d.id);
+  const t=todayISO();
+  const rows=apptList(null).filter(([,a])=>a.date===t&&a.status!=="cancelled"&&(!docs||docs.includes(a.doctor)));
+  const head=`<strong>بیماران امروز${rows.length?` (${fa(rows.length)})`:""}</strong>`;
+  if(!rows.length) return `<div class="panel">${head}<p class="note" style="margin:6px 0 0">برای امروز نوبتی ثبت نشده.</p></div>`;
+  return `<div class="panel">${head}${rows.map(([i,a])=>apptRowHtml(i,a,r!=="doctor")).join("")}</div>`;
 }
 function staffView(id){
   const me=byId(id);
   let h=`<h2>سلام ${esc(me.name)}</h2>`;
   if(me.role==="insurance") return h+insuranceTab();
   if(me.role==="lab") return h+LAB.portal(id);
-  h+=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id);
+  h+=staffAlerts(id)+myShiftsHome(id)+todayPatientsPanel(id);
   h+=`<div class="tiles">`+staffPages(id).map(pg=>`<button class="tile ${pg.attn?"attn":""}" data-page="${pg.key}">${pg.badge?`<span class="bd">${fa(pg.badge)}</span>`:""}${esc(pg.title)}${pg.sub?`<small>${pg.sub}</small>`:""}</button>`).join("")+`</div>`;
   return h;
 }
 function openStaffPage(key){
   const pg=who!=="manager"&&staffPages(who).find(x=>x.key===key); if(!pg) return;
   staffPage=key; staffPageWho=who;
-  Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>${esc(pg.title)}</strong></div><div id="pageBody">${pg.html}</div>`,null,{page:true,onClose:()=>{staffPage=null}});
+  Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>${esc(pg.title)}</strong></div><div id="pageBody">${staffAlerts(who)}${pg.html}</div>`,null,{page:true,onClose:()=>{staffPage=null}});
   bind();
 }
 /* بعد از هر render، برگهٔ بازِ پورتال هم نو می‌شود (بدون پرش اسکرول) */
@@ -276,7 +304,7 @@ function syncStaffPage(){
   if(who==="manager"||staffPageWho!==who){ Shell.close(); return; }
   const pg=staffPages(who).find(x=>x.key===staffPage);
   if(!pg){ Shell.close(); return; }
-  if(!Shell.refresh(pg.html)) staffPage=null;
+  if(!Shell.refresh(staffAlerts(who)+pg.html)) staffPage=null;
 }
 
 async function staffParseRun(){
@@ -1678,15 +1706,17 @@ function planItemLabel(it){
   const loc=it.tooth?`دندان ${fa(it.tooth)}`:it.arch?ARCHN[it.arch]:"";
   return `${esc(it.label||it.text)}${loc?" ("+esc(loc)+")":""}`;
 }
-function patientsPanel(id){
+function patientsPanel(id,part){
   if(byId(id)?.role!=="doctor") return "";
   const mine=Object.entries(patients).filter(([,p])=>p.doctor===id).sort((a,b)=>b[1].createdAt-a[1].createdAt);
-  let h=`<div class="panel"><strong>بیماران من</strong>`;
+  let h=part==="new"?`<div class="panel"><strong>بیمار جدید</strong>`:`<div class="panel"><strong>بیماران من</strong>`;
+  if(part!=="new"){
   if(!mine.length) h+=`<p class="note" style="margin:6px 0 0">هنوز بیماری ثبت نشده.</p>`;
   else{
     h+=`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-list-toggle" aria-expanded="${patListOpen}">${patListOpen?"بستن فهرست بیماران":"نمایش بیماران من ("+fa(mine.length)+")"}</button></p>`;
     if(patListOpen) h+=`<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${mine.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div>`;
   }
+  h+=`</div>`; return h;}
   h+=`<div style="margin-top:10px">
     <label class="note" for="newPatName">بیمار جدید</label>
     <input type="text" id="newPatName" placeholder="اسم بیمار" value="${esc(patDraft.name||"")}">

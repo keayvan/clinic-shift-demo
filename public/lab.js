@@ -260,11 +260,11 @@ const LAB = (() => {
   }
 
   /* ---------- پنل دکتر، دستیار و منشی ---------- */
-  function staffPanel(id) {
+  function staffPanel(id, part) {
     const r = byId(id)?.role; if (!["doctor", "assistant", "reception"].includes(r)) return "";
+    if (part === "order") return `<div class="panel"><strong>سفارش به لابراتوار</strong><p class="note" style="margin:2px 0 8px">کار تازه برای لابراتوار بفرست.</p>${form("t")}</div>`;
     const mine = list().filter(active);
-    return `<div class="panel"><strong>لابراتوار</strong><p class="note" style="margin:2px 0 8px">کار تازه برای لابراتوار بفرست و مرحلهٔ کارهای قبلی را ببین.</p>${form("t")}
-      <div style="margin-top:12px"><strong>${r === "doctor" ? "کارهای من" : "کارهای در جریان"} (${fa(mine.length)})</strong>${mine.length ? table(mine) : '<p class="note">کاری در جریان نیست.</p>'}</div></div>`;
+    return `<div class="panel"><strong>${r === "doctor" ? "کارهای لابراتوار من" : "کارهای در جریان"} (${fa(mine.length)})</strong>${mine.length ? table(mine) : '<p class="note">کاری در جریان نیست.</p>'}</div>`;
   }
   /* در پروندهٔ بیمار: ارسال کار به لابراتوار و وضعیت کارهای همین بیمار */
   function sheetPanel(p) {

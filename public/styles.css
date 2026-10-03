@@ -215,3 +215,10 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .sheet-card.page>*{max-width:780px;margin-inline:auto}
 .pagehead{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:12px;background:var(--surface);padding:12px 0;margin-bottom:8px;border-bottom:1px solid var(--line)}
 .pagehead strong{font-size:1.1rem}
+
+.alertbox{border:2px solid var(--warn);background:var(--warn-bg,rgba(200,40,40,.08));border-radius:14px;padding:8px 10px;margin:10px 0}
+.alertbox .alerthead{color:var(--warn);font-weight:800;margin-bottom:4px}
+.alertbox .panel{border-color:var(--warn);margin:8px 0}
+.shiftlist{margin:6px 0 0;padding:0;list-style:none}
+.shiftlist li{padding:5px 0;border-top:1px solid var(--line)}
+.shiftlist li.today{background:var(--bg);font-weight:700;padding-inline:6px;border-radius:8px}
