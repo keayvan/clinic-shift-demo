@@ -481,10 +481,28 @@ const IMP = (() => {
     }
   }
 
+  /* نمونهٔ تصادفی با تعداد دلخواه؛ با demo:true علامت می‌خورد و پاک‌شدنی است */
+  async function demoCase(i, p) {
+    const t = todayISO(), docs = (cfg?.staff || []).filter(s => s.role === "doctor"); if (!docs.length) return;
+    const pick = a => a[Math.floor(Math.random() * a.length)], int = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+    const FN = ["علی", "مریم", "رضا", "زهرا", "حسین", "سارا", "محمد", "نرگس", "امیر", "فاطمه"], LN = ["محمدی", "کریمی", "رحیمی", "حسینی", "نوری", "صادقی", "جلالی", "اکبری"];
+    const ST = ["planned", "surgery", "healing", "prosthetic", "done", "deferred"], RG = ["ur", "ul", "lr", "ll"];
+    const id = "imp" + uid() + i, regions = {};
+    for (const r of RG.filter(() => Math.random() < .5).slice(0, 2).concat(Math.random() < .3 ? [] : [pick(RG)])) regions[r] = { status: pick(ST), plan: "ایمپلنت دندان " + int(11, 48), next: isoAdd(t, int(3, 90)), at: Date.now() };
+    const total = pick([45e6, 60e6, 90e6, 120e6]), down = Math.round(total * .25), k = int(2, 5), each = Math.round((total - down) / k / 1e6) * 1e6;
+    await LDB.doc("implants/" + id).set({ id, demo: true, patientId: p?.id || null, name: p?.name || pick(FN) + " " + pick(LN), phone: p?.phone || "09" + int(10, 39) + String(int(0, 9999999)).padStart(7, "0"), doctor: p?.doctor || pick(docs).id, createdAt: Date.now() - i * 3600e3, regions,
+      contract: { total, down, at: Date.now() }, installments: Array.from({ length: k }, (_, j) => ({ id: uid() + j, due: isoAdd(t, int(-40, 20) + j * 30), amount: each })),
+      payments: [{ id: uid() + "p", amount: down, date: isoAdd(t, -int(10, 60)), method: "cash", card: null, note: "", at: Date.now() }], opg: [] });
+  }
+  async function demo(n) { for (let i = 0; i < n; i++) await demoCase(i, null); return n; }
+  /* برای بیمار آزمایشی: یک پروندهٔ ایمپلنت تصادفی */
+  async function demoFor(p) { await demoCase(Math.floor(Math.random() * 1000), p); }
+  async function clearDemo() { let n = 0; for (const c of Object.values(cases)) if (c.demo) { await LDB.doc("implants/" + c.id).delete(); n++; } return n; }
+
   function start() {
     LDB.collection("implants").onSnapshot(q => { cases = {}; q.docs.forEach(x => cases[x.id] = x.data()); loadedOnce = true; render(); if (openId && Shell.kind() === "implant" && !money) renderSheet(); });
     LDB.doc("implant/settings").onSnapshot(sn => { settings = sn.exists ? sn.data() : { access: {}, cards: [] }; render(); });
   }
   const badge = () => canMoney(who) ? Object.values(cases).filter(vis).filter(c => !c.archived && fin(c).inst.some(i => i.left > 0 && i.days <= 0)).length : 0;
-  return { start, seed, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin, visFor }, files: { IDB, shrink } };
+  return { start, seed, demo, demoFor, clearDemo, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin, visFor }, files: { IDB, shrink } };
 })();

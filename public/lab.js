@@ -106,22 +106,25 @@ const LAB = (() => {
   function jalaliIn(days) {
     try { const d = new Date(Date.now() + days * 864e5), [y, m, dd] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate()); return fa(`${y}/${String(m).padStart(2, "0")}/${String(dd).padStart(2, "0")}`); } catch (e) { return null; }
   }
-  async function seedDemo() {
+  async function makeDemo(i, pat) {
     const docs = ofRole("doctor"), recs = ofRole("reception"), lab = ofRole("lab")[0]; if (!docs.length) return;
-    const pats = Object.values(patients), day = 864e5, now = Date.now();
-    for (let i = 0; i < DEMO_PLAN.length; i++) {
-      const [st, kind, ago, note, dueIn] = DEMO_PLAN[i], idx = ORDER.indexOf(st);
-      const pat = pats.length ? pats[(i * 3) % pats.length] : null;
-      const doctor = pat?.doctor || docs[i % docs.length].id, name = pat?.name || DEMO_PEOPLE[i % DEMO_PEOPLE.length];
-      const age = ago ? ago * day : 3 * 36e5, created = now - age - (i % 4) * 36e5;
-      const clinicBy = recs.length ? recs[i % recs.length].id : doctor;
-      const by = s => (s === "sent" ? clinicBy : s === "inlab" || s === "ready" ? (lab?.id || "l1") : s === "received" ? clinicBy : doctor);
-      const log = ORDER.slice(0, idx + 1).map((s, k) => ({ s, at: Math.round(created + age * k / (idx + 1)), by: by(s) }));
-      const id = "demo-" + uid();
-      await db.doc("lab/" + id).set({ id, demo: true, patientName: name, patientId: pat ? pat.id : null, doctor, kind, note, due: dueIn ? jalaliIn(dueIn) : null, createdBy: clinicBy, createdAt: created, status: st, log });
-    }
+    const day = 864e5, now = Date.now();
+    const [st, kind, ago, note, dueIn] = DEMO_PLAN[i % DEMO_PLAN.length], idx = ORDER.indexOf(st);
+    const doctor = pat?.doctor || docs[i % docs.length].id, name = pat?.name || DEMO_PEOPLE[i % DEMO_PEOPLE.length];
+    const age = ago ? ago * day : 3 * 36e5, created = now - age - (i % 4) * 36e5;
+    const clinicBy = recs.length ? recs[i % recs.length].id : doctor;
+    const by = s => (s === "sent" ? clinicBy : s === "inlab" || s === "ready" ? (lab?.id || "l1") : s === "received" ? clinicBy : doctor);
+    const log = ORDER.slice(0, idx + 1).map((s, k) => ({ s, at: Math.round(created + age * k / (idx + 1)), by: by(s) }));
+    const id = "demo-" + uid();
+    await db.doc("lab/" + id).set({ id, demo: true, patientName: name, patientId: pat ? pat.id : null, doctor, kind, note, due: dueIn ? jalaliIn(dueIn) : null, createdBy: clinicBy, createdAt: created, status: st, log });
   }
-  async function clearDemo() { for (const o of list().filter(x => x.demo)) await db.doc("lab/" + o.id).delete(); }
+  async function seedDemo(n) {
+    const pats = Object.values(patients), total = n || DEMO_PLAN.length;
+    for (let i = 0; i < total; i++) await makeDemo(i, pats.length ? pats[(i * 3) % pats.length] : null);
+  }
+  /* برای هر بیمار آزمایشی: یک سفارش لابراتوار تصادفی */
+  async function demoFor(pat) { await makeDemo(Math.floor(Math.random() * DEMO_PLAN.length), pat); }
+  async function clearDemo() { let n = 0; for (const o of list().filter(x => x.demo)) { await db.doc("lab/" + o.id).delete(); n++; } return n; }
   function refresh() {
     try {
       render();
@@ -309,6 +312,6 @@ const LAB = (() => {
       } finally { b.disabled = false; }
     });
   }
-  return { start, tab, portal, staffPanel, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, visibleFor, STATUS, KINDS, DEMO_PLAN } };
+  return { start, tab, portal, staffPanel, seedDemo, demoFor, clearDemo, sheetPanel, badge, _t: { nextOf, prevOf, canMoveFor, normalize, visibleFor, STATUS, KINDS, DEMO_PLAN } };
 })();
 if (typeof globalThis !== "undefined") globalThis.LAB = LAB;

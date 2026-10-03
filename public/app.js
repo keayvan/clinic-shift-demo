@@ -753,9 +753,9 @@ function managerView(){
   const nConf=newConflicts().length+(sched?.alerts||[]).filter(a=>!a.resolved).length+Object.values(reqs).filter(liveReq).length;
   const lowN=lowStockItems().length;
   const apptToday=Object.values(appts).filter(a=>a.date===todayISO()&&a.status==="scheduled").length;
-  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["calendar","تقویم"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["feedback","نظرها"]];
+  const tabs=[["schedule","برنامه"+(nConf?` (${fa(nConf)})`:"")],["avail","حضورها"],["rules","قوانین"],["staff","کارکنان"],["report","گزارش"],["patients","بیماران"],["calendar","تقویم"],["appts","نوبت‌ها"+(apptToday?` (${fa(apptToday)})`:"")],["inventory","انبار"+(lowN?` (${fa(lowN)})`:"")],["insurance","بیمه"],["lab","لابراتوار"+(LAB.badge()?` (${fa(LAB.badge())})`:"")],["implant","ایمپلنت"+(IMP.badge()?` (${fa(IMP.badge())})`:"")],["demo","داده آزمایشی"],["feedback","نظرها"]];
   let h=syncBar()+topAlerts()+`<nav class="tabs" role="tablist">`+tabs.map(([k,n])=>`<button role="tab" data-tab="${k}" aria-selected="${tab===k}">${n}</button>`).join("")+`</nav>`;
-  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="calendar"?calendarTab(): tab==="inventory"?inventoryTab(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
+  h+= tab==="schedule"?schedTab(): tab==="avail"?availTab(): tab==="rules"?rulesTab(): tab==="report"?reportTab()+reportDemoPanel(): tab==="patients"?patientsTab(): tab==="appts"?apptsTab(): tab==="calendar"?calendarTab(): tab==="demo"?demoTab(): tab==="inventory"?inventoryTab()+inventoryDemoPanel(): tab==="insurance"?insuranceTab(): tab==="lab"?LAB.tab(): tab==="feedback"?feedbackTab(): tab==="implant"?IMP.tab(): staffTab();
   return h;
 }
 /* ---------- monthly report ---------- */
@@ -952,7 +952,7 @@ function applyRuleActions(src,actions){
       c.rules=c.rules.filter(r=>r.staff!==a.id&&!(r.ids||[]).includes(a.id));
     }
     if(a.op==="add_staff"){
-      const pre={doctor:"d",assistant:"a",reception:"r"}[a.role];
+      const pre={doctor:"d",assistant:"a",reception:"r",insurance:"i",lab:"l"}[a.role];
       const used=[...c.staff,...(c.usedIds||[]).map(id=>({id}))].map(x=>x.id).filter(x=>x.startsWith(pre)).map(x=>+x.slice(1)||0);
       const id=pre+(Math.max(0,...used)+1);
       c.staff.push({id,name:a.name,role:a.role,...(a.specialty?{specialty:a.specialty}:{})});
@@ -993,11 +993,11 @@ function demoNumRow(key,label,def){
 function staffDemoPanel(){
   const n=r=>ofRole(r).length;
   return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض همان تعداد فعلی است). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
-    <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}</div>
+    <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}${demoNumRow("si","مسئول بیمه",n("insurance"))}${demoNumRow("sl","لابراتوار",n("lab"))}</div>
     <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
 }
 async function staffDemoRun(){
-  const want={doctor:+demoCount("sd",ofRole("doctor").length)||0,assistant:+demoCount("sa",ofRole("assistant").length)||0,reception:+demoCount("sr",ofRole("reception").length)||0};
+  const want={doctor:+demoCount("sd",ofRole("doctor").length)||0,assistant:+demoCount("sa",ofRole("assistant").length)||0,reception:+demoCount("sr",ofRole("reception").length)||0,insurance:+demoCount("si",ofRole("insurance").length)||0,lab:+demoCount("sl",ofRole("lab").length)||0};
   const pick=a=>a[Math.floor(Math.random()*a.length)];
   const c=structuredClone(cfg), before=new Set(c.staff.map(x=>x.id)), actions=[];
   for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
@@ -1025,28 +1025,76 @@ async function patientDemoClear(){
   const ids=Object.entries(patients).filter(([,p])=>p.demo).map(([id])=>id), set=new Set(ids);
   for(const id of ids){ await db.doc("patients/"+id).delete(); delete patients[id] }
   let n=0; for(const [id,a] of Object.entries(appts)) if(set.has(a.patientId)){ await db.doc("appointments/"+id).delete(); n++ }
-  patMsg=ids.length?`${fa(ids.length)} بیمار آزمایشی (و ${fa(n)} نوبتشان) پاک شد.`:"بیمار آزمایشیِ ساخته‌شده با این دکمه نیست."; render();
+  for(const col of ["lab","implants"]){ const q=await db.collection(col).get(); for(const d of q.docs){ const o=d.data(); if(o.demo&&set.has(o.patientId)){ await db.doc(col+"/"+d.id).delete(); n++ } } }
+  patMsg=ids.length?`${fa(ids.length)} بیمار آزمایشی (و ${fa(n)} نوبت/سفارش/ایمپلنت وابسته‌شان) پاک شد.`:"بیمار آزمایشیِ ساخته‌شده با این دکمه نیست."; render();
 }
 /* شروع تمیز: همهٔ دادهٔ بالینی؛ کارکنان و تنظیمات دست‌نخورده می‌مانند */
 async function wipeAll(){
   let n=0;
-  for(const col of ["patients","appointments","lab","implants"]){
+  for(const col of ["patients","appointments","lab","implants","inventory","archive"]){
     const q=await db.collection(col).get();
     for(const d of q.docs){ await db.doc(col+"/"+d.id).delete(); n++ }
   }
-  patients={}; appts={}; patMsg=`${fa(n)} مورد پاک شد. حالا از صفر شروع می‌کنی.`; render();
+  patients={}; appts={}; inventory={}; archive={}; demoMsg=`${fa(n)} مورد پاک شد. حالا از صفر شروع می‌کنی.`; render();
+}
+let demoMsg="";
+const INV_POOL=[["آمالگام","ویال"],["کامپوزیت دندانی","بسته"],["بی‌حسی لیدوکائین","ویال"],["گاز استریل","بسته"],["دستکش لاتکس","جعبه"],["ماسک جراحی","جعبه"],["پودر جرمگیری","بسته"],["روکش موقت","بسته"],["نخ بخیه","بسته"],["مته دندانپزشکی","عدد"],["سیمان گلاس‌آینومر","بسته"],["ایمپلنت تیتانیوم","عدد"],["غشای استخوانی","بسته"],["فیلر پالپ","بسته"],["نوار ماتریکس","بسته"],["سرنگ یک‌بارمصرف","جعبه"],["بِرِکت ارتودنسی","بسته"],["قالب‌گیری آلژینات","بسته"],["آینه دندانپزشکی","عدد"],["محلول ضدعفونی","بطری"]];
+function inventoryDemoPanel(){
+  return `<div class="panel"><strong>داده آزمایشی: انبار</strong><p class="note" style="margin:2px 0 6px">تعداد کالای جدید (پیش‌فرض همان تعداد فعلی). بعضی‌شان عمداً کم‌موجودی ساخته می‌شوند تا هشدار انبار دیده شود.</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("vn","تعداد کالا",Object.keys(inventory).length||10)}<button class="btn" data-act="inv-demo">افزودن کالای آزمایشی</button><button class="btn quiet" data-act="inv-demo-clear">پاک کردن کالاهای آزمایشی</button></div>${demoMsg?`<p class="okline" style="margin-top:6px">${esc(demoMsg)}</p>`:""}</div>`;
+}
+async function inventoryDemoRun(){
+  const n=Math.min(60,Math.max(0,+demoCount("vn",Object.keys(inventory).length||10)||0));
+  for(let i=0;i<n;i++){
+    const [name,unit]=INV_POOL[Math.floor(Math.random()*INV_POOL.length)], minQty=5+Math.floor(Math.random()*40), qty=Math.random()<.3?Math.floor(Math.random()*minQty):minQty+Math.floor(Math.random()*minQty*2), id="inv"+uid()+i;
+    const it={id,demo:true,name,unit,qty,minQty,updatedAt:Date.now()}; await db.doc("inventory/"+id).set(it); inventory[id]=it;
+  }
+  demoN={}; demoMsg=`${fa(n)} کالای آزمایشی ساخته شد.`; render();
+}
+async function inventoryDemoClear(){
+  const ids=Object.entries(inventory).filter(([,v])=>v.demo).map(([id])=>id);
+  for(const id of ids){ await db.doc("inventory/"+id).delete(); delete inventory[id] }
+  demoMsg=`${fa(ids.length)} کالای آزمایشی پاک شد.`; render();
+}
+function reportDemoPanel(){
+  return `<div class="panel"><strong>داده آزمایشی: گزارش ماه</strong><p class="note" style="margin:2px 0 6px">چند هفتهٔ آرشیوشدهٔ تصادفی در همین ماه می‌سازد تا گزارش جمع شیفت‌ها پر شود.</p>
+    <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("wn","تعداد هفته",3)}<button class="btn" data-act="rep-demo">افزودن هفتهٔ آزمایشی</button><button class="btn quiet" data-act="rep-demo-clear">پاک کردن هفته‌های آزمایشی</button></div>${demoMsg?`<p class="okline" style="margin-top:6px">${esc(demoMsg)}</p>`:""}</div>`;
+}
+async function reportDemoRun(){
+  const n=Math.min(8,Math.max(0,+demoCount("wn",3)||0)), staff=(cfg.staff||[]).filter(s=>!["insurance","lab"].includes(s.role));
+  for(let i=0;i<n;i++){
+    const counts={}, names={}, roles={}; for(const s of staff){ counts[s.id]=Math.floor(Math.random()*8); names[s.id]=s.name; roles[s.id]=s.role }
+    const id="wk"+uid()+i, w={id,demo:true,at:Date.now()-i*3600e3,counts,staffNames:names,staffRoles:roles}; await db.doc("archive/"+id).set(w); archive[id]=w;
+  }
+  demoN={}; demoMsg=`${fa(n)} هفتهٔ آزمایشی به گزارش اضافه شد.`; render();
+}
+async function reportDemoClear(){
+  const ids=Object.entries(archive).filter(([,v])=>v.demo).map(([id])=>id);
+  for(const id of ids){ await db.doc("archive/"+id).delete(); delete archive[id] }
+  demoMsg=`${fa(ids.length)} هفتهٔ آزمایشی پاک شد.`; render();
+}
+function wipePanel(){
+  return `<div class="panel" style="border:2px solid var(--warn)"><strong>شروع تمیز</strong><p class="note" style="margin:2px 0 8px">همهٔ بیماران، نوبت‌ها، سفارش‌های لابراتوار، ایمپلنت‌ها، انبار و گزارش‌های آرشیو را پاک می‌کند (چه آزمایشی چه نه). کارکنان و تنظیمات می‌مانند. برگشت ندارد.</p>
+    <button class="btn danger" data-act="wipe-all">شروع تمیز: پاک کردن همهٔ داده‌ها</button>${demoMsg?`<p class="okline" style="margin-top:6px">${esc(demoMsg)}</p>`:""}</div>`;
+}
+/* تب «داده آزمایشی»: همهٔ ابزارهای ساخت و پاک‌کردن یک‌جا */
+function demoTab(){
+  return `<p class="lead">این‌جا برای هر بخش داده آزمایشی بساز یا پاک کن. هر دکمهٔ «پاک کردن» فقط همان داده‌های آزمایشیِ خودش را برمی‌دارد. بیمارهای آزمایشی خودشان چند سفارش لابراتوار و پروندهٔ ایمپلنت هم می‌گیرند.</p>
+    ${staffDemoPanel()}${patientDemoPanel()}${apptDemoPanel()}${inventoryDemoPanel()}${reportDemoPanel()}${wipePanel()}`;
+}
+function apptDemoPanel(){
+  return `<div class="panel"><strong>داده آزمایشی: نوبت‌ها</strong><p class="note" style="margin:2px 0 6px">برای شنبه تا پنج‌شنبهٔ این هفته، ۲ تا ۵ نوبت تصادفی برای هر دکتر.</p><p class="row"><button class="btn" data-act="ap-demo">افزودن نوبت‌های آزمایشی این هفته</button><button class="btn quiet" data-act="ap-demo-clear">پاک کردن نوبت‌های آزمایشی</button></p></div>`;
 }
 function patientDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض همان تعداد فعلی است). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",Object.keys(patients).length)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button><button class="btn quiet" data-act="pat-demo-clear">پاک کردن بیماران آزمایشی</button></div>
-    <p class="row" style="margin-top:10px"><button class="btn danger" data-act="wipe-all">شروع تمیز: پاک کردن همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها</button></p>
     ${patMsg?`<p class="okline" style="margin-top:6px">${patMsg}</p>`:""}</div>`;
 }
 async function patientDemoRun(){
   const docs=ofRole("doctor"); if(!docs.length){ patMsg="اول دکتر اضافه کن."; return render() }
   const n=Math.min(200,Math.max(0,+demoCount("pn",Object.keys(patients).length)||0));
   const TXS=[["root_canal","عصب‌کشی"],["scaling","جرمگیری"],["extraction","کشیدن دندان"],["crown","روکش"],["filling","پرکردن"],["checkup","معاینه"]];
-  const pick=a=>a[Math.floor(Math.random()*a.length)];
+  const pick=a=>a[Math.floor(Math.random()*a.length)]; let nl=0, ni=0;
   for(let i=0;i<n;i++){
     const d=docs[i%docs.length], plan=[], items=1+Math.floor(Math.random()*4);
     for(let k=0;k<items;k++){
@@ -1056,8 +1104,10 @@ async function patientDemoRun(){
     const id="p"+uid(), ins=pick([["تامین‌اجتماعی",50e6],["بیمهٔ ملی",40e6],["رازی",60e6],["آزاد",null]]);
     const p=PF.demo({id,demo:true,doctor:d.id,name:demoName(),createdAt:Date.now()-i*1000,plan,insurance:{name:ins[0],cap:ins[1]}});
     await db.doc("patients/"+id).set(p); patients[id]=p;
+    if(Math.random()<.4){ await LAB.demoFor(p); nl++ }
+    if(Math.random()<.2){ await IMP.demoFor(p); ni++ }
   }
-  demoN={}; patMsg=`${fa(n)} بیمار آزمایشی با پروندهٔ کامل ساخته شد.`; render();
+  demoN={}; patMsg=`${fa(n)} بیمار آزمایشی با پروندهٔ کامل ساخته شد؛ ${fa(nl)} سفارش لابراتوار و ${fa(ni)} پروندهٔ ایمپلنت هم برای بعضی‌شان ساخته شد.`; render();
 }
 function staffTab(){
   let h=staffDemoPanel()+`<p class="lead">نام‌ها و تخصص دکترها را عوض کنید و «ذخیره نام‌ها» را بزنید. «حذف» فرد را به‌طور کامل از سیستم برمی‌دارد.</p>${staffMsg?`<div class="panel ${staffMsgBad?"warn":""}">${esc(staffMsg)}</div>`:""}<div class="panel">`;
@@ -2680,6 +2730,10 @@ async function act(a,btn){
   if(a==="clinic-name-save") return clinicNameSave();
   if(a==="pat-search"){patSearch=($("#patSearchBox")?.value||"").trim();return render()}
   if(a==="pat-search-clear"){patSearch="";return render()}
+  if(a==="inv-demo"){btn.disabled=true;return inventoryDemoRun()}
+  if(a==="inv-demo-clear"){btn.disabled=true;return inventoryDemoClear()}
+  if(a==="rep-demo"){btn.disabled=true;return reportDemoRun()}
+  if(a==="rep-demo-clear"){btn.disabled=true;return reportDemoClear()}
   if(a==="staff-demo-clear"){btn.disabled=true;return staffDemoClear()}
   if(a==="pat-demo-clear"){btn.disabled=true;return patientDemoClear()}
   if(a==="wipe-all"){ if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="مطمئنی؟ همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها پاک می‌شود. دوباره بزن";return} btn.disabled=true; return wipeAll() }
