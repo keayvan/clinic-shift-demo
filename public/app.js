@@ -124,6 +124,8 @@ async function exportInsXlsx(){
     if(!LDB.hasAny("patients")){ await seedPatientsIfMissing(); await fillSeeded(); }
     if(!LDB.hasAny("inventory")) await seedInventoryIfMissing();
   }
+  if(!clean){ const c0=(await LDB.doc("clinic/config").get()).data();   /* کارکنان نمونه هم مشخصات کامل داشته باشند (فقط جاهای خالی) */
+    if(c0&&c0.staff.some(s=>!s.fatherName&&!s.nationalId)){ c0.staff=c0.staff.map(s=>(s.fatherName||s.nationalId)?s:staffDemoInfo(s)); await LDB.doc("clinic/config").set(c0); } }
   if(!clean){ const c=(await LDB.doc("clinic/config").get()).data();
     if(c&&!c.staff.some(x=>x.role==="insurance")){ c.staff.push({id:"i1",name:"کامران",role:"insurance"}); c.usedIds=[...new Set([...(c.usedIds||[]),"i1"])]; await LDB.doc("clinic/config").set(c); }
     if(c&&!c.staff.some(x=>x.role==="lab")){ c.staff.push({id:"l1",name:"دلارام",role:"lab"}); c.usedIds=[...new Set([...(c.usedIds||[]),"l1"])]; await LDB.doc("clinic/config").set(c); } }
