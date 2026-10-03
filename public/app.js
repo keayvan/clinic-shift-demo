@@ -1494,13 +1494,20 @@ function alertItem(key,summary,body,cls,defOpen){
   const open=alertOpen[key]===undefined?!!defOpen:alertOpen[key];   /* انتخاب صریح کاربر بر پیش‌فرض می‌چربد */
   return `<details class="alitem ${cls||""}" data-al="${esc(key)}" ${open?"open":""}><summary><span>${summary}</span></summary><div class="albody">${body}</div></details>`;
 }
+/* هر اعلان جدا و با «دیدم» خودش؛ دیدن یکی بقیه را پنهان نمی‌کند */
+function seenIds(id){try{return new Set(JSON.parse(localStorage.getItem("seenids_"+id)||"[]"))}catch(e){return new Set()}}
+function markSeen(id,nid){try{const s=seenIds(id);s.add(nid);localStorage.setItem("seenids_"+id,JSON.stringify([...s].slice(-200)))}catch(e){}}
 function noticesPanel(id){
   if(!sched) return "";
-  const list=(sched.notices||[]).filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id));
+  const seen=seenIds(id);
+  const list=(sched.notices||[]).filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id)&&!seen.has(n.id||String(n.at)));
   if(!list.length) return "";
-  const last=list[list.length-1], short=last.text.length>46?last.text.slice(0,46)+"…":last.text;
-  return alertItem("notices","📢 "+esc(short)+(list.length>1?` <span class="note">(+${fa(list.length-1)} مورد)</span>`:""),
-    `<ul class="clean issues">${list.slice(-8).reverse().map(n=>`<li>${esc(n.text)} <span class="note">${new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span></li>`).join("")}</ul><p class="row" style="margin-top:8px"><button class="btn quiet" data-act="seen">دیدم</button></p>`);
+  const when=n=>new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"});
+  const items=list.slice(-8).reverse().map(n=>{
+    const nid=n.id||String(n.at), short=n.text.length>46?n.text.slice(0,46)+"…":n.text;
+    return alertItem("n-"+nid,"📢 "+esc(short),`<p style="margin:0 0 4px">${esc(n.text)}</p><p class="note" style="margin:0 0 8px">${when(n)}</p><button class="btn quiet" data-seen-one="${esc(nid)}">دیدم</button>`);
+  }).join("");
+  return items+(list.length>1?`<p class="row" style="margin:6px 0 2px"><button class="btn quiet" data-act="seen">همه را دیدم</button></p>`:"");
 }
 function confirmPanel(id){
   const list=(sched?.confirms||[]).filter(c=>(c.to||[]).includes(id)&&!c.responses?.[id]);
@@ -2784,6 +2791,7 @@ function bind(){
     const root=document.querySelector("#pageBody")||document, ok=await staffSave(b.dataset.selfSave,readStaffForm(root,"self"));
     const m=document.querySelector("#selfMsg"); if(m) m.textContent=ok?"ذخیره شد.":"ذخیره نشد.";
   });
+  document.querySelectorAll("[data-seen-one]").forEach(b=>b.onclick=()=>{markSeen(who,b.dataset.seenOne);render()});
   document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open});
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
   document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
