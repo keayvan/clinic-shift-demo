@@ -95,6 +95,7 @@ const LAB = (() => {
     const o = orders[id]; if (!o) return;
     if (!(role() === "manager" || (o.createdBy === who && o.status === "sent"))) return;
     await db.doc("lab/" + id).delete();
+    if (openId === id) Shell.close();
   }
   /* داده‌های آزمایشی: چند سفارش در همهٔ مرحله‌ها تا کارکرد لابراتوار دیده شود؛ با demo:true علامت می‌خورند و پاک‌شدنی‌اند */
   const DEMO_PEOPLE = ["علی رضایی", "مریم حسینی", "رضا کریمی", "نگار احمدی", "حسین موسوی", "سارا نوری", "امیر صادقی", "زهرا جعفری", "پویا محمدی", "لیلا اکبری"];
@@ -121,7 +122,13 @@ const LAB = (() => {
     }
   }
   async function clearDemo() { for (const o of list().filter(x => x.demo)) await db.doc("lab/" + o.id).delete(); }
-  function refresh() { try { render(); if (patDraft.openId && !$("#sheet").hidden) renderPatientSheet(); } catch (e) { } }
+  function refresh() {
+    try {
+      render();
+      if (openId) { const o = orders[openId]; if (!o) Shell.close(); else if (!Shell.refresh(detail(o))) openId = null; }
+      else if (patDraft.openId && Shell.kind() === "patient") renderPatientSheet();
+    } catch (e) { }
+  }
 
   /* ---------- فرم سفارش ---------- */
   function form(prefix, o = {}) {
@@ -153,7 +160,7 @@ const LAB = (() => {
     const canDel = r === "manager" || (o.createdBy === who && o.status === "sent");
     return `<div style="border-top:1px solid var(--line);padding:10px 0">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><strong>${esc(o.patientName)}</strong><span class="chip ${o.status === "delivered" ? "assistant" : o.status === "ready" || o.status === "received" ? "reception" : "doctor"}">${LABEL[o.status]}</span></div>
-      <div class="note">${esc(o.kind)} · دکتر ${esc(nm(o.doctor))} · ثبت ${fdate(o.createdAt)}${o.due ? " · موعد " + esc(o.due) : ""}</div>
+      <div class="note">${esc(o.kind)} · ${esc(nm(o.doctor))} · ثبت ${fdate(o.createdAt)}${o.due ? " · موعد " + esc(o.due) : ""}</div>
       ${o.note ? `<div style="margin:4px 0">${esc(o.note)}</div>` : ""}
       ${(o.files || []).length ? `<div style="margin:4px 0">${fileChips(o)}</div>` : ""}
       <div class="note" style="margin-top:2px">${esc(steps)}</div>
@@ -172,22 +179,54 @@ const LAB = (() => {
     const n = NLU.norm(o.patientName), e = Object.entries(patients).find(([, p]) => NLU.norm(p.name) === n);
     return e ? e[0] : null;
   }
+  const SHORT = { sent: "ارسال شد", inlab: "در لابراتوار", ready: "آماده و فرستاده شد", received: "رسید به کلینیک", delivered: "تحویل شد" };
+  const SBTN = { inlab: "دریافت شد", ready: "آماده شد", received: "رسید", delivered: "تحویل شد" };
+  const who_ = id => id === "manager" ? "مدیر مجموعه" : nm(id);
+  const cls = st => st === "delivered" ? "assistant" : st === "ready" || st === "received" ? "reception" : "doctor";
+  const oneLine = o => { const note = String(o.note || "").split("\n")[0].trim(), cut = note.length > 26 ? note.slice(0, 26) + "…" : note; return o.kind + (cut ? " · " + cut : "") + ((o.files || []).length ? " · " + fa(o.files.length) + " پیوست" : ""); };
+  function actions(o, small) {
+    const r = role(), nx = nextOf(o.status), pv = prevOf(o.status), canDel = r === "manager" || (o.createdBy === who && o.status === "sent");
+    const st = small ? ' style="padding:4px 8px;font-size:.8rem"' : "", lab = t => small ? SBTN[t] : BTN[t];
+    return `${nx && canMoveFor(r, nx) ? `<button class="btn primary"${st} data-lab="step" data-id="${o.id}" data-to="${nx}">${lab(nx)}</button>` : ""}${pv && canMoveFor(r, o.status) ? `<button class="btn quiet"${st} title="برگرداندن به «${LABEL[pv]}»" data-lab="step" data-id="${o.id}" data-to="${pv}">برگرداندن</button>` : ""}${r === "manager" ? `<button class="btn quiet"${st} data-lab="refer" data-id="${o.id}">ارجاع</button>` : ""}${canDel ? `<button class="x" data-lab="del" data-id="${o.id}">حذف</button>` : ""}`;
+  }
+  /* در جدول فقط دکمهٔ مرحلهٔ بعد هست؛ برگرداندن، ارجاع و حذف داخل جزئیات سفارش‌اند */
+  function actionsRow(o) {
+    const nx = nextOf(o.status);
+    return nx && canMoveFor(role(), nx) ? `<button class="btn primary" style="padding:4px 8px;font-size:.8rem" data-lab="step" data-id="${o.id}" data-to="${nx}">${SBTN[nx]}</button>` : "";
+  }
+  /* جدول: بیمار (با دکتر)، خلاصهٔ یک‌خطی کار، موعد، وضعیت، دکمه. کلیک روی بیمار یا ردیف، جزئیات و تاریخچه را باز می‌کند */
   function table(rows) {
-    const r = role();
-    const cls = st => st === "delivered" ? "assistant" : st === "ready" || st === "received" ? "reception" : "doctor";
-    const act = o => {
-      const nx = nextOf(o.status), pv = prevOf(o.status);
-      const canDel = r === "manager" || (o.createdBy === who && o.status === "sent");
-      return `<span class="row" style="gap:4px;flex-wrap:wrap;justify-content:center">${nx && canMoveFor(r, nx) ? `<button class="btn primary" style="padding:4px 8px;font-size:.8rem" data-lab="step" data-id="${o.id}" data-to="${nx}">${BTN[nx]}</button>` : ""}${pv && canMoveFor(r, o.status) ? `<button class="btn quiet" style="padding:4px 8px;font-size:.8rem" title="برگرداندن به «${LABEL[pv]}»" data-lab="step" data-id="${o.id}" data-to="${pv}">برگرداندن</button>` : ""}${r === "manager" ? `<button class="btn quiet" style="padding:4px 8px;font-size:.8rem" data-lab="refer" data-id="${o.id}">ارجاع</button>` : ""}${canDel ? `<button class="x" data-lab="del" data-id="${o.id}">حذف</button>` : ""}</span>`;
-    };
-    const tr = o => {
-      const pid = patientIdOf(o), last = (o.log || []).slice(-1)[0], steps = (o.log || []).map(x => `${LABEL[x.s]}: ${ftime(x.at)}`).join(" · ");
-      return `<tr><td>${pid ? `<button class="linkbtn" data-pat="${pid}">${esc(o.patientName)}</button>` : `${esc(o.patientName)} <span class="note">(در فهرست بیماران نیست)</span>`}<div class="note">دکتر ${esc(nm(o.doctor))}</div></td>
-        <td style="text-align:start">${esc(o.kind)}${o.note ? `<div class="note">${esc(o.note)}</div>` : ""}${o.due ? `<div class="note">موعد: ${esc(o.due)}</div>` : ""}${(o.files || []).length ? `<div>${fileChips(o)}</div>` : ""}${r === "manager" ? `<div class="note">ارجاع: ${esc(REF.names(o.refs))}</div>` : ""}</td>
-        <td><span class="chip ${cls(o.status)}" title="${esc(steps)}">${LABEL[o.status]}</span>${last ? `<div class="note">${ftime(last.at)}</div>` : ""}</td>
-        <td>${act(o)}</td></tr>`;
-    };
-    return `<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>بیمار</th><th>کار</th><th>وضعیت</th><th></th></tr></thead><tbody>${rows.map(tr).join("")}</tbody></table></div>`;
+    const tr = o => `<tr data-lab-row="${o.id}" style="cursor:pointer">
+        <td><button class="linkbtn" data-lab="open" data-id="${o.id}">${esc(o.patientName)}</button><div class="note">${esc(nm(o.doctor))}</div></td>
+        <td style="text-align:start;max-width:34vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${esc(oneLine(o))}">${esc(oneLine(o))}</td>
+        <td>${o.due ? esc(o.due) : "—"}</td>
+        <td><span class="chip ${cls(o.status)}">${SHORT[o.status]}</span></td>
+        <td>${actionsRow(o)}</td></tr>`;
+    return `<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>بیمار</th><th>کار</th><th>موعد</th><th>وضعیت</th><th></th></tr></thead><tbody>${rows.map(tr).join("")}</tbody></table></div>`;
+  }
+
+  /* ---------- جزئیات سفارش: همهٔ اطلاعات، تاریخچهٔ مرحله‌ها و پیوند به پروندهٔ بیمار ---------- */
+  let openId = null;
+  const span = ms => { const m = Math.round(ms / 6e4); if (m < 1) return "کمتر از یک دقیقه"; if (m < 60) return fa(m) + " دقیقه"; const h = Math.floor(m / 60); if (h < 24) return fa(h) + " ساعت" + (m % 60 ? " و " + fa(m % 60) + " دقیقه" : ""); const d = Math.floor(h / 24); return fa(d) + " روز" + (h % 24 ? " و " + fa(h % 24) + " ساعت" : ""); };
+  function detail(o) {
+    const r = role(), pid = patientIdOf(o), log = o.log || [];
+    const rows = [["دکتر", nm(o.doctor)], ["نوع کار", o.kind], ["موعد تحویل", o.due || "—"], ["ثبت‌کننده", who_(o.createdBy) + " · " + fdate(o.createdAt)], ...(r === "manager" ? [["ارجاع", REF.names(o.refs)]] : [])];
+    const files = (o.files || []).map((f, i) => f.type === "application/pdf"
+      ? `<p><a class="btn" href="${f.data}" download="${esc(f.name)}">دانلود ${esc(f.name)}</a></p>`
+      : `<p style="margin:6px 0"><img src="${f.data}" alt="${esc(f.name)}" style="max-width:100%;border-radius:8px;background:#000"><span class="note" style="display:block">${esc(f.name)}</span></p>`).join("");
+    const hist = log.map((x, k) => `<li style="margin-bottom:6px"><strong>${LABEL[x.s]}</strong><div class="note">${fdate(x.at)} ساعت ${new Date(x.at).toLocaleTimeString("fa-IR", { hour: "2-digit", minute: "2-digit" })} · توسط ${esc(who_(x.by))}${k ? " · " + span(x.at - log[k - 1].at) + " بعد از مرحلهٔ قبل" : ""}</div></li>`).join("");
+    const total = log.length > 1 ? `<p class="note">از ارسال تا آخرین مرحله: ${span(log[log.length - 1].at - log[0].at)}${o.status !== "delivered" ? " · از آخرین مرحله تا الان: " + span(Date.now() - log[log.length - 1].at) : ""}</p>` : "";
+    return `<div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><h2 style="margin:0">${esc(o.patientName)}</h2><span class="chip ${cls(o.status)}">${LABEL[o.status]}</span></div>
+      ${pid ? `<p class="row" style="margin:10px 0"><button class="btn primary" data-lab="rec" data-pid="${pid}">باز کردن پروندهٔ بیمار</button></p>` : `<p class="note" style="margin:8px 0">این اسم در فهرست بیماران نیست؛ پروندهٔ مستقلی برایش باز نمی‌شود.</p>`}
+      <div class="panel" style="margin:10px 0">${rows.map(([l, v]) => `<div style="margin-bottom:4px"><strong>${l}: </strong>${esc(v)}</div>`).join("")}${o.note ? `<div style="margin-top:6px"><strong>توضیح: </strong><span style="white-space:pre-wrap">${esc(o.note)}</span></div>` : ""}</div>
+      ${files ? `<div class="panel" style="margin:10px 0"><strong>پیوست‌ها</strong>${files}</div>` : ""}
+      <div class="panel" style="margin:10px 0"><strong>تاریخچه</strong><ol class="clean" style="margin:8px 0 0;padding:0;list-style:none">${hist}</ol>${total}</div>
+      <p class="row" style="flex-wrap:wrap;gap:6px">${actions(o, false)}</p>`;
+  }
+  function openOrder(id) {
+    const o = orders[id]; if (!o) return;
+    openId = id;
+    Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>جزئیات سفارش لابراتوار</strong></div><div id="pageBody">${detail(o)}</div>`, null, { page: true, kind: "laborder", onClose: () => { openId = null; } });
   }
 
   /* ---------- تب مدیر ---------- */
@@ -251,6 +290,8 @@ const LAB = (() => {
       render();
     });
     document.addEventListener("click", async e => {
+      const row = e.target.closest("[data-lab-row]");
+      if (row && !e.target.closest("button, a, input, select, textarea")) { openOrder(row.dataset.labRow); return; }
       const b = e.target.closest("[data-lab]"); if (!b) return;
       b.disabled = true;
       try {
@@ -258,6 +299,8 @@ const LAB = (() => {
         else if (b.dataset.lab === "step") await move(b.dataset.id, b.dataset.to);
         else if (b.dataset.lab === "del") await remove(b.dataset.id);
         else if (b.dataset.lab === "refer") { const o = orders[b.dataset.id]; if (o) REF.open("ارجاع سفارش «" + o.patientName + "»", o.refs || [], ids => db.doc("lab/" + o.id).set({ ...o, refs: ids, updatedAt: Date.now() }), { exclude: ["lab"], always: "لابراتوار، دکتر سفارش و ثبت‌کننده" }); }
+        else if (b.dataset.lab === "open") openOrder(b.dataset.id);
+        else if (b.dataset.lab === "rec") openPatientSheet(b.dataset.pid);
         else if (b.dataset.lab === "file") openFile(b.dataset.id, +b.dataset.i);
         else if (b.dataset.lab === "rmfile") { const d = drafts[b.dataset.form]; if (d && d.files) d.files.splice(+b.dataset.i, 1); refresh(); }
         else if (b.dataset.lab === "demo") await seedDemo();

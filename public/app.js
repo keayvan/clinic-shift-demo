@@ -137,7 +137,7 @@ async function exportInsXlsx(){
   db.collection("responses").onSnapshot(q=>{resps={};q.docs.forEach(x=>resps[x.id]=x.data());render()},()=>{});
   db.collection("docpref").onSnapshot(q=>{dprefs={};q.docs.forEach(x=>dprefs[x.id]=x.data());render()},()=>{});
   db.collection("archive").onSnapshot(q=>{archive={};q.docs.forEach(x=>archive[x.id]=x.data());render()},()=>{});
-  db.collection("patients").onSnapshot(q=>{patients={};q.docs.forEach(x=>patients[x.id]=x.data());render();if(patDraft.openId&&!$("#sheet").hidden)renderPatientSheet()},()=>{});
+  db.collection("patients").onSnapshot(q=>{patients={};q.docs.forEach(x=>patients[x.id]=x.data());render();if(patDraft.openId&&Shell.kind()==="patient")renderPatientSheet()},()=>{});
   db.collection("inventory").onSnapshot(q=>{inventory={};q.docs.forEach(x=>inventory[x.id]=x.data());render()},()=>{});
   db.collection("appointments").onSnapshot(q=>{appts={};q.docs.forEach(x=>appts[x.id]=x.data());render()},()=>{});
   LAB.start();
@@ -1864,7 +1864,7 @@ function renderPatientSheet(){
     const pd=root.querySelector("#payDay"); if(pd) pd.onchange=e=>payDraft.jd=+e.target.value;
     const pmo=root.querySelector("#payMonth"); if(pmo) pmo.onchange=e=>{payDraft.jm=+e.target.value;renderPatientSheet()};
     const pyr=root.querySelector("#payYear"); if(pyr) pyr.onchange=e=>{payDraft.jy=+e.target.value;renderPatientSheet()};
-  });
+  },{kind:"patient"});
 }
 async function patOpgUpload(files){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;

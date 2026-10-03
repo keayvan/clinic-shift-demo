@@ -333,7 +333,7 @@ const IMP = (() => {
       root.querySelectorAll("[data-opg-del]").forEach(b => b.onclick = async () => { if (b.dataset.arm !== "1") { b.dataset.arm = "1"; b.textContent = "مطمئنید؟"; return; } const x = structuredClone(c); x.opg = x.opg.filter(o => o.id !== b.dataset.opgDel); try { await IDB.del(b.dataset.opgDel); } catch (e) {} await save(x); renderSheet(); });
       const up = root.querySelector("#impOpg"); if (up) up.onchange = () => uploadOpg(c, [...up.files]);
       root.querySelectorAll("[data-imp]").forEach(b => b.onclick = () => { keep(); sheetAct(b.dataset.imp, root, b); });
-    });
+    }, { kind: "implant" });
   }
   async function uploadOpg(c, files) {
     sheetErr = ""; sheetMsg = "در حال ذخیره تصویر…"; renderSheet();
@@ -482,7 +482,7 @@ const IMP = (() => {
   }
 
   function start() {
-    LDB.collection("implants").onSnapshot(q => { cases = {}; q.docs.forEach(x => cases[x.id] = x.data()); loadedOnce = true; render(); if (openId && !$("#sheet").hidden && !money) renderSheet(); });
+    LDB.collection("implants").onSnapshot(q => { cases = {}; q.docs.forEach(x => cases[x.id] = x.data()); loadedOnce = true; render(); if (openId && Shell.kind() === "implant" && !money) renderSheet(); });
     LDB.doc("implant/settings").onSnapshot(sn => { settings = sn.exists ? sn.data() : { access: {}, cards: [] }; render(); });
   }
   const badge = () => canMoney(who) ? Object.values(cases).filter(vis).filter(c => !c.archived && fin(c).inst.some(i => i.left > 0 && i.days <= 0)).length : 0;

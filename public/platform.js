@@ -5,7 +5,7 @@
    - FB: feedback + automatic logging for the developer (queued, sent to /api/feedback when online)
    - Shell: install-to-home-screen, update banner, guide, feedback button */
 "use strict";
-const APP_VERSION = "2.15.0";
+const APP_VERSION = "2.16.0";
 const NS = "clinicdemo:";
 
 /* ---------- local document store ---------- */
@@ -308,7 +308,7 @@ const Shell = (() => {
     if (onCloseCb) { const f = onCloseCb; onCloseCb = null; try { f(); } catch (e) {} }
     const root = $("#sheet"); locked = !!(opts && opts.locked); onCloseCb = (opts && opts.onClose) || null;
     const page = !!(opts && opts.page);
-    root.innerHTML = `<div class="sheet-back" ${locked ? "" : "data-close-sheet"}></div><div class="sheet-card${page ? " page" : ""}" role="dialog" aria-modal="true">${locked || page ? "" : `<button class="sheet-x" data-close-sheet aria-label="بستن">✕</button>`}${html}</div>`;
+    root.innerHTML = `<div class="sheet-back" ${locked ? "" : "data-close-sheet"}></div><div class="sheet-card${page ? " page" : ""}" data-kind="${(opts && opts.kind) || ""}" role="dialog" aria-modal="true">${locked || page ? "" : `<button class="sheet-x" data-close-sheet aria-label="بستن">✕</button>`}${html}</div>`;
     root.hidden = false; document.body.style.overflow = "hidden";
     root.querySelectorAll("[data-close-sheet]").forEach(b => b.onclick = close);
     onOpen && onOpen(root);
@@ -452,5 +452,6 @@ const Shell = (() => {
     }
     FB.flush();
   }
-  return { start, badge, sheet, close, refresh };
+  const kind = () => { const c = $("#sheet .sheet-card"); return $("#sheet").hidden || !c ? "" : c.dataset.kind || ""; };
+  return { start, badge, sheet, close, refresh, kind };
 })();
