@@ -336,7 +336,12 @@ function todayPatientsPanel(id){
   const rows=apptList(null).filter(([,a])=>a.date===t&&a.status!=="cancelled"&&(!docs||docs.includes(a.doctor)));
   const head=`<strong>بیماران امروز${rows.length?` (${fa(rows.length)})`:""}</strong>`;
   if(!rows.length) return `<div class="panel">${head}<p class="note" style="margin:6px 0 0">برای امروز نوبتی ثبت نشده.</p></div>`;
-  return `<div class="panel">${head}${rows.map(([i,a])=>apptRowHtml(i,a,r!=="doctor")).join("")}</div>`;
+  const showDoc=r!=="doctor";
+  const tr=rows.map(([i,a])=>{
+    const st=APPT_ST[a.status]||APPT_ST.scheduled;
+    return `<tr><td>${a.time?esc(a.time):"—"}</td><td><strong>${esc(a.name)}</strong>${a.patientId&&patients[a.patientId]?` <button class="btn quiet" data-pat="${a.patientId}" style="padding:2px 8px">پرونده</button>`:""}${a.note?`<div class="note">${esc(a.note)}</div>`:""}</td>${showDoc?`<td>${esc(nm(a.doctor))}</td>`:""}<td style="color:${st[1]}">${st[0]}</td><td>${a.status==="scheduled"?`<button class="btn quiet" data-apst="${i}|done">آمد</button> <button class="btn quiet" data-apst="${i}|noshow">نیامد</button>`:""}</td></tr>`;
+  }).join("");
+  return `<div class="panel">${head}<div style="overflow-x:auto;margin-top:8px"><table class="av" style="min-width:0"><thead><tr><th>ساعت</th><th>بیمار</th>${showDoc?"<th>دکتر</th>":""}<th>وضعیت</th><th></th></tr></thead><tbody>${tr}</tbody></table></div></div>`;
 }
 function staffView(id){
   const me=byId(id);
