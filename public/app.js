@@ -321,8 +321,8 @@ function staffPages(id){
   add("intake","پذیرش بیمار جدید",patientIntakePanel(id));
   add("appts","نوبت‌ها",apptDoctorPanel(id)+apptAssistantPanel(id)+apptBookingPanel(id));
   const nl=LAB.badge(), isDoc=byId(id)?.role==="doctor";
-  add("laborder","سفارش به لابراتوار",LAB.staffPanel(id,"order"));
-  add("labmine",isDoc?"کارهای لابراتوار من":"کارهای لابراتوار",LAB.staffPanel(id,"mine"),{badge:nl});
+  const lo=LAB.staffPanel(id,"order"), lm=LAB.staffPanel(id,"mine");
+  add("lab","لابراتوار",(lo?`<div class="panel"><strong>سفارش به لابراتوار</strong></div>${lo}`:"")+(lm?`<div class="panel"><strong>${isDoc?"کارهای لابراتوار من":"کارهای لابراتوار"}</strong></div>${lm}`:""),{badge:nl});
   add("implant","ایمپلنت",IMP.staffPanel(id));
   return pages;
 }
@@ -707,17 +707,18 @@ function feedbackTab(){
 }
 
 /* ---------- تقویم مدیر: هفتگی/ماهانه با تعداد نفرات و بیماران هر روز ---------- */
-let mCal={mode:"week",off:0};
+let mCal={mode:"week",off:0,doc:""};
 const DAYKEY={6:"sat",0:"sun",1:"mon",2:"tue",3:"wed",4:"thu"};
 function dayInfo(d){
   const iso=isoOf(d), k=DAYKEY[d.getDay()], docs=new Set(), asst=new Set(), rec=new Set(), shifts=[];
   if(k&&sched) for(const [sk,sn] of SHIFTS){
     const sl=sched.slots?.[k+"_"+sk]; if(!sl) continue;
     const row={sn,pairs:[],rec:[...(sl.reception||[])],free:[...(sl.free||[])]};
-    for(const p of sl.pairs||[]){ if(p.d) docs.add(p.d); if(p.a) asst.add(p.a); row.pairs.push(p) }
-    row.rec.forEach(x=>rec.add(x)); shifts.push(row);
+    for(const p of sl.pairs||[]){ if(mCal.doc&&p.d!==mCal.doc) continue; if(p.d) docs.add(p.d); if(p.a) asst.add(p.a); row.pairs.push(p) }
+    if(mCal.doc){ row.rec=[]; row.free=[]; if(!row.pairs.length) continue; } else row.rec.forEach(x=>rec.add(x));
+    shifts.push(row);
   }
-  const list=Object.entries(appts).filter(([,a])=>a.date===iso&&a.status!=="cancelled").sort((a,b)=>(a[1].time||"99").localeCompare(b[1].time||"99"));
+  const list=Object.entries(appts).filter(([,a])=>a.date===iso&&a.status!=="cancelled"&&(!mCal.doc||a.doctor===mCal.doc)).sort((a,b)=>(a[1].time||"99").localeCompare(b[1].time||"99"));
   return {iso,k,docs,asst,rec,shifts,list};
 }
 function calCounts(inf){
@@ -750,6 +751,7 @@ function calendarTab(){
   return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
     <span class="row"><button class="btn ${mCal.mode==="week"?"primary":"quiet"}" data-act="mc-week">هفتگی</button><button class="btn ${mCal.mode==="month"?"primary":"quiet"}" data-act="mc-month">ماهانه</button></span>
     <span class="row"><button class="btn quiet" data-act="mc-prev" aria-label="قبلی">›</button><strong>${title}</strong><button class="btn quiet" data-act="mc-next" aria-label="بعدی">‹</button><button class="btn quiet" data-act="mc-today">امروز</button></span></div>
+    <div style="margin-top:8px"><label class="note" for="mcDoc" style="display:block">فقط تقویم این دکتر</label><select id="mcDoc"><option value="">همهٔ دکترها</option>${ofRole("doctor").map(d=>`<option value="${d.id}" ${mCal.doc===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
     ${sched?"":'<p class="note">هنوز برنامهٔ شیفتی ساخته نشده؛ فقط بیماران دیده می‌شوند.</p>'}</div>${body}
     <p class="note">حضور کارکنان بر اساس برنامهٔ شیفتِ فعلی است و هر هفته تکرار می‌شود؛ بیماران بر اساس نوبت‌های همان تاریخ.</p>`;
 }
@@ -857,7 +859,7 @@ function availTab(){
     h+=`<tr class="rolehead"><td colspan="13">${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}</td></tr>`;
     for(const s of ofRole(r)){
       const a=avail[s.id];
-      h+=`<tr><td>${esc(s.name)}${s.specialty?` <span class="note">(${esc(s.specialty)})</span>`:""}${a?.confirmed?(a.auto&&a.week===availWeek()?' <span class="note">(خودکار)</span>':""):' <span class="note">(نفرستاده)</span>'}</td>`+
+      h+=`<tr><td><button class="linkbtn" data-prof="${s.id}">${esc(s.name)}</button>${s.specialty?` <span class="note">(${esc(s.specialty)})</span>`:""}${a?.confirmed?(a.auto&&a.week===availWeek()?' <span class="note">(خودکار)</span>':""):' <span class="note">(نفرستاده)</span>'}</td>`+
         DAYS.map(([k])=>SHIFTS.map(([sk])=>`<td><span class="dot ${a?.confirmed&&a.grid?.[k]?.[sk]?"on":""}"></span></td>`).join("")).join("")+`</tr>`;
     }
   }
@@ -2391,6 +2393,8 @@ function renderPatientSheet(){
   body+=sec("opg","OPG و تصاویر",`<div class="row" style="justify-content:flex-end"><label class="btn">📷 آپلود OPG<input type="file" id="patOpg" accept="image/*" multiple hidden></label></div>
     ${patDraft.opgMsg?`<p class="${patDraft.opgBad?"warn":"okline"}">${esc(patDraft.opgMsg)}</p>`:""}
     <div class="imp-opgs">${(p.opg||[]).map(o=>`<figure><button data-popg="${o.id}"><img src="${o.thumb}" alt="OPG"></button><figcaption>${esc(o.date)} <button class="x" data-popg-del="${o.id}">حذف</button></figcaption></figure>`).join("")||`<p class="note">هنوز تصویری آپلود نشده.</p>`}</div>`);
+  const myAp=Object.entries(appts).filter(([,a])=>a.patientId===p.id).sort((x,y)=>(y[1].date+(y[1].time||"")).localeCompare(x[1].date+(x[1].time||"")));
+  body+=sec("appts",`نوبت‌های بیمار (${fa(myAp.length)})`,myAp.length?myAp.map(([,a])=>{const st=APPT_ST[a.status]||APPT_ST.scheduled;return `<div style="border-top:1px solid var(--line);padding:6px 0"><strong>${esc(apptDateLabel(a.date))}</strong>${a.time?` <span class="note">${esc(a.time)}</span>`:""} <span class="note">— ${esc(nm(a.doctor))}</span> <span style="color:${st[1]}">${st[0]}</span>${a.note?`<div class="note">${esc(a.note)}</div>`:""}</div>`}).join(""):`<p class="note">هنوز نوبتی برای این بیمار ثبت نشده.</p>`);
   body+=sec("fin","امور مالی",financeHtml(p));
   if(isMgr) body+=`${patErr?`<p class="warn">${esc(patErr)}</p>`:""}<p class="row" style="margin-top:16px"><button class="btn ${patDraft.editingInfo?"primary":"quiet"}" data-act="pat-toggle-edit">${patDraft.editingInfo?"ذخیره و پایان ویرایش":"ویرایش اطلاعات"}</button></p>`;
   Shell.sheet(body,root=>{
@@ -2627,7 +2631,7 @@ function patientsTab(){
     <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
       <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFDoc">دکتر</label><select id="patFDoc" style="width:100%">${opt("","همهٔ دکترها",F.doc)}${ofRole("doctor").map(d=>opt(d.id,esc(d.name),F.doc)).join("")}</select></div>
-      <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFPlan">وضعیت طرح</label><select id="patFPlan" style="width:100%">${opt("","همه",F.plan)}${opt("left","کار باقی‌مانده دارد",F.plan)}${opt("done","همه انجام‌شده",F.plan)}${opt("none","بدون طرح",F.plan)}</select></div>
+      <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFPlan">پیشرفت طرح درمان</label><select id="patFPlan" style="width:100%">${opt("","همه",F.plan)}${opt("left","کار باقی‌مانده دارد",F.plan)}${opt("done","همه انجام‌شده",F.plan)}${opt("none","بدون طرح",F.plan)}</select></div>
       <div style="flex:1 1 120px"><label class="note" style="display:block" for="patFSort">مرتب‌سازی</label><select id="patFSort" style="width:100%">${opt("new","جدیدترین",F.sort)}${opt("name","اسم (الفبا)",F.sort)}${opt("left","بیشترین کار باقی‌مانده",F.sort)}</select></div>
     </div>
     ${active?`<p class="row" style="margin-top:8px"><span class="note">${fa(rows.length)} بیمار از ${fa(all.length)}</span><button class="btn quiet" data-act="pat-filter-clear">پاک کردن فیلترها</button></p>`:""}</div>`;
@@ -2702,6 +2706,12 @@ function findPatientIdByName(doctorId,name){
   const m=Object.entries(patients).find(([,p])=>p.doctor===doctorId&&NLU.norm(p.name)===n);
   return m?m[0]:null;
 }
+function docHoursText(doc){
+  if(!sched) return "";
+  const out=[];
+  for(const [k,dn] of DAYS){ const sh=SHIFTS.filter(([sk])=>(sched.slots?.[k+"_"+sk]?.pairs||[]).some(p=>p.d===doc)).map(([,sn])=>sn); if(sh.length) out.push(dn+" "+sh.join(" و ")); }
+  return out.join("، ");
+}
 function apptFormHtml(){
   const docs=ofRole("doctor");
   if(apptDraft.jy==null){ const [jy,jm,jd]=todayJalali(); apptDraft.jy=jy; apptDraft.jm=jm; apptDraft.jd=jd; }
@@ -2717,7 +2727,7 @@ function apptFormHtml(){
     <input type="text" id="apName" list="apPatList" placeholder="اسم بیمار" value="${esc(apptDraft.name||"")}">
     <datalist id="apPatList">${Object.values(patients).map(p=>`<option value="${esc(p.name)}">`).join("")}</datalist>
     <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:8px">
-      <div style="flex:1 1 140px"><label class="note" for="apDoc">دکتر</label><select id="apDoc">${docs.map(d=>`<option value="${d.id}" ${(apptDraft.doctor||docs[0]?.id)===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select></div>
+      <div style="flex:1 1 140px"><label class="note" for="apDoc">دکتر</label><select id="apDoc">${docs.map(d=>`<option value="${d.id}" ${(apptDraft.doctor||docs[0]?.id)===d.id?"selected":""}>${esc(d.name)}</option>`).join("")}</select>${(()=>{const dd=apptDraft.doctor||docs[0]?.id, t=dd?docHoursText(dd):"";return sched&&dd?`<div class="note" id="apDocHrs" style="margin-top:4px">حضور ${esc(nm(dd))}: ${t?esc(t):"در برنامهٔ فعلی شیفتی ندارد"}</div>`:""})()}</div>
       <div style="flex:1 1 100px"><label class="note" for="apTime">ساعت</label><input type="time" id="apTime" value="${esc(apptDraft.time||"")}"></div>
     </div>
     <label class="note" style="display:block;margin-top:8px">تاریخ (شمسی)</label>
@@ -2794,6 +2804,11 @@ async function apptAdd(btn){
   const [gy,gm,gd]=jalaliToGregorian(apptDraft.jy,apptDraft.jm,apptDraft.jd);
   const date=gy+"-"+String(gm).padStart(2,"0")+"-"+String(gd).padStart(2,"0");
   const conflict=time&&Object.values(appts).some(a=>a.status==="scheduled"&&a.doctor===doctor&&a.date===date&&a.time===time);
+  const dk=DAYKEY[new Date(gy,gm-1,gd,12).getDay()], offDay=sched&&!SHIFTS.some(([sk])=>(sched.slots?.[dk+"_"+sk]?.pairs||[]).some(p=>p.d===doctor));
+  if(offDay&&btn&&btn.dataset.sure!=="1"){
+    btn.dataset.sure="1"; btn.textContent=`${nm(doctor)} آن روز در برنامهٔ شیفت نیست؛ مطمئنی؟ دوباره بزن`;
+    return;
+  }
   if(conflict&&btn&&btn.dataset.sure!=="1"){
     btn.dataset.sure="1"; btn.textContent=`${nm(doctor)} همین ساعت نوبت دیگه‌ای داره؛ مطمئنی؟ دوباره بزن`;
     return;
@@ -2869,13 +2884,14 @@ function bind(){
   const inq=$("#invQty"); if(inq) inq.oninput=e=>invDraft.qty=e.target.value;
   const inm=$("#invMin"); if(inm) inm.oninput=e=>invDraft.minQty=e.target.value;
   const apn=$("#apName"); if(apn) apn.oninput=e=>apptDraft.name=e.target.value;
-  const apd=$("#apDoc"); if(apd) apd.onchange=e=>apptDraft.doctor=e.target.value;
+  const apd=$("#apDoc"); if(apd) apd.onchange=e=>{apptDraft.doctor=e.target.value;const h=$("#apDocHrs");if(h){const t=docHoursText(e.target.value);h.textContent="حضور "+nm(e.target.value)+": "+(t||"در برنامهٔ فعلی شیفتی ندارد")}};
   const apdy=$("#apDay"); if(apdy) apdy.onchange=e=>apptDraft.jd=+e.target.value;
   const apmo=$("#apMonth"); if(apmo) apmo.onchange=e=>{apptDraft.jm=+e.target.value;render()};
   const apyr=$("#apYear"); if(apyr) apyr.onchange=e=>{apptDraft.jy=+e.target.value;render()};
   const aptm=$("#apTime"); if(aptm) aptm.oninput=e=>apptDraft.time=e.target.value;
   const apnt=$("#apNote"); if(apnt) apnt.oninput=e=>apptDraft.note=e.target.value;
   document.querySelectorAll("[data-apst]").forEach(b=>b.onclick=async()=>{const [id,st]=b.dataset.apst.split("|");b.disabled=true;await apptSetStatus(id,st)});
+  { const el=$("#mcDoc"); if(el) el.onchange=e=>{mCal.doc=e.target.value;render()}; }
   for(const [id,k] of [["patFDoc","doc"],["patFPlan","plan"],["patFSort","sort"]]){ const el=$("#"+id); if(el) el.onchange=e=>{patFilter[k]=e.target.value;render()}; }
   const psb=$("#patSearchBox"); if(psb) psb.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();patSearch=e.target.value.trim();render()}};
   const ian=$("#intakeName"); if(ian) ian.oninput=e=>patDraft.iName=e.target.value;
