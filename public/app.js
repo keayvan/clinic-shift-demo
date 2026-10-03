@@ -1023,8 +1023,7 @@ function staffDemoPanel(){
   const n=r=>ofRole(r).length;
   return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض: ترکیب اولیهٔ کلینیک). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}${demoNumRow("si","مسئول بیمه",n("insurance"))}${demoNumRow("sl","لابراتوار",n("lab"))}</div>
-    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button></p>
-    <p class="row" style="margin-top:6px"><button class="btn quiet" data-act="staff-demo-fill">تکمیل اطلاعات آزمایشی همهٔ کارکنان موجود</button></p>${dnote("staff")}</div>`;
+    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button></p>${dnote("staff")}</div>`;
 }
 async function staffDemoRun(){
   const want={doctor:+demoCount("sd")||0,assistant:+demoCount("sa")||0,reception:+demoCount("sr")||0,insurance:+demoCount("si")||0,lab:+demoCount("sl")||0};
@@ -1143,7 +1142,6 @@ function schedDemoPanel(){
 function patientDemoPanel(){
   return `<div class="panel"><strong>داده آزمایشی: بیماران</strong><p class="note" style="margin:2px 0 6px">تعداد بیمار جدید را بنویس (پیش‌فرض: ترکیب اولیهٔ کلینیک). هر بیمار با پروندهٔ کامل (مشخصات، بیمه، سابقه) و چند کار درمانی ساخته می‌شود و بین دکترها پخش می‌شود.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px;align-items:flex-end">${demoNumRow("pn","تعداد بیمار",10)}<button class="btn" data-act="pat-demo-new">افزودن بیماران آزمایشی</button><button class="btn quiet" data-act="pat-demo-clear">پاک کردن بیماران آزمایشی</button></div>
-    <p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران موجود</button></p>
     ${dnote("pat")}</div>`;
 }
 async function patientDemoRun(){
@@ -2965,21 +2963,10 @@ async function act(a,btn){
     staffMsgBad=false; staffMsg=`«${name}» به‌عنوان ${ROLEN[role]} اضافه شد.`; return render();
   }
   if(a==="sched-demo"){btn.disabled=true;return schedDemoRun()}
-  if(a==="staff-demo-fill"){
-    btn.disabled=true; const next=structuredClone(cfg); let n=0;
-    next.staff=next.staff.map(s=>{ const q=staffDemoInfo(s); if(JSON.stringify(q)!==JSON.stringify(s)) n++; return q });
-    await db.doc("clinic/config").set(next); cfg=next;
-    dmsg("staff",`اطلاعات همهٔ ${fa(next.staff.length)} کارمند کامل است (${fa(n)} نفر تغییر کرد؛ فقط جاهای خالی پر شد).`); return render();
-  }
   if(a==="staff-demo-clear"){btn.disabled=true;return staffDemoClear()}
   if(a==="pat-demo-clear"){btn.disabled=true;return patientDemoClear()}
   if(a==="wipe-all"){ if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="مطمئنی؟ همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها پاک می‌شود. دوباره بزن";return} btn.disabled=true; try{ return await wipeAll() }catch(e){ dmsg("wipe","شروع تمیز کامل انجام نشد؛ دوباره امتحان کن.",true); return render() } }
   if(a==="staff-demo"){btn.disabled=true;return staffDemoRun()}
   if(a==="pat-demo-new"){btn.disabled=true;return patientDemoRun()}
-  if(a==="pat-demo-fill"){
-    btn.disabled=true; let n=0;
-    for(const [id,p] of Object.entries(patients)){ const q=PF.demo(p); if(JSON.stringify(q)!==JSON.stringify(p)){ await db.doc("patients/"+id).set(q); patients[id]=q; n++ } }
-    dmsg("pat",`اطلاعات همهٔ ${fa(Object.keys(patients).length)} بیمار کامل است (${fa(n)} بیمار تغییر کرد؛ فقط جاهای خالی پر شد).`); return render();
-  }
   if(a==="pat-filter-clear"){patSearch="";patFilter={doc:"",plan:"",sort:"new"};return render()}
 }
