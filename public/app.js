@@ -1243,9 +1243,10 @@ function hoursChartHtml(id){
 /* پروندهٔ شخصی که خود فرد در پورتالش می‌بیند */
 function selfProfileHtml(id){
   const s=byId(id); if(!s) return "";
-  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip">${ROLEN[s.role]}</span></div>${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}
-    <p class="note" style="margin:8px 0 0">موارد خاکستری را فقط مدیر عوض می‌کند. اطلاعات تماس و شخصی را خودت می‌توانی به‌روز کنی.</p>${staffFormHtml(s,"self")}
-    <p class="row" style="margin-top:10px"><button class="btn primary" data-self-save="${id}">ذخیره</button><span id="selfMsg" class="okline"></span></p></div>`+hoursChartHtml(id);
+  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip">${ROLEN[s.role]}</span></div>${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}</div>`
+    +hoursChartHtml(id)
+    +`<div class="panel"><strong>مشخصات</strong><p class="note" style="margin:4px 0 0">موارد خاکستری را فقط مدیر عوض می‌کند. اطلاعات تماس و شخصی را خودت می‌توانی به‌روز کنی.</p>${staffFormHtml(s,"self")}
+    <p class="row" style="margin-top:10px"><button class="btn primary" data-self-save="${id}">ذخیره</button><span id="selfMsg" class="okline"></span></p></div>`;
 }
 /* اطلاعات آزمایشی کارمند؛ فقط جاهای خالی را پر می‌کند */
 function staffDemoInfo(s){
@@ -1270,11 +1271,11 @@ function staffProfileHtml(id){
   let h=`<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip ${s.role==="doctor"?"doctor":s.role==="assistant"?"assistant":""}">${ROLEN[s.role]}</span></div>
     ${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}${s.demo?'<p class="note" style="margin:2px 0 0">آزمایشی</p>':""}
     ${pairs.length?`<p style="margin:8px 0 0"><span class="note">${s.role==="doctor"?"دستیارها":"دکترهای همکار"}:</span> ${pairs.map(esc).join("، ")}</p>`:""}</div>
+  ${hoursChartHtml(id)}
   <div class="panel"><strong>مشخصات (قابل‌ویرایش)</strong>${staffFormHtml(s,"manager")}
     <p class="row" style="margin-top:8px"><button class="btn primary" data-prof-save="${id}">ذخیره</button></p></div>`;
   h+=`<div class="panel"><strong>شیفت‌های این هفته</strong>${ms==null?'<p class="note" style="margin:6px 0 0">برنامه هنوز ساخته نشده.</p>':ms.length?`<ul class="clean shiftlist">${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:'<p class="note" style="margin:6px 0 0">در برنامه شیفتی ندارد.</p>'}
     ${mt?.shifts?`<p class="note" style="margin:8px 0 0">این ماه: ${fa(mt.shifts)} شیفت، حدود ${fa(mt.shifts*SHIFT_HOURS)} ساعت</p>`:""}</div>`;
-  h+=hoursChartHtml(id);
   if(!["insurance","lab"].includes(s.role)) h+=`<div class="panel"><strong>حضور هفتهٔ بعد</strong> <span class="note">(${sent})</span>${a?.grid?gridHtml(a.grid,false):'<p class="note" style="margin:6px 0 0">هنوز چیزی ثبت نکرده.</p>'}${a?.text?`<p class="note" style="margin:6px 0 0">«${esc(a.text)}»</p>`:""}</div>`;
   if(rules.length) h+=`<div class="panel"><strong>قوانین مربوط (${fa(rules.length)})</strong><ul class="clean issues">${rules.map(r=>`<li>${esc(describe(r))}</li>`).join("")}</ul></div>`;
   if(s.role==="doctor"){
