@@ -987,12 +987,22 @@ async function ruleApply(){
 }
 
 /* ---------- داده آزمایشی: کارکنان و بیماران (تعداد قابل‌تنظیم، پیش‌فرض = تعداد فعلی) ---------- */
-const DEMO_FIRST=["علی","مریم","رضا","زهرا","حسین","سارا","محمد","نرگس","امیر","فاطمه","کامران","لیلا","پویا","شیما","مهدی","الهام","بابک","نازنین","سعید","مینا"];
+const DEMO_FEMALE=["مریم","زهرا","سارا","نرگس","فاطمه","لیلا","شیما","الهام","نازنین","مینا","نگار","آزاده","ندا","هانیه","پریسا","سمیرا","مهسا","الناز","شادی","غزل"];
+const DEMO_MALE=["علی","رضا","حسین","محمد","امیر","کامران","پویا","مهدی","بابک","سعید","حمید","بهروز","احسان","آرش","مجید","کیان"];
+const DEMO_FIRST=[...DEMO_FEMALE,...DEMO_MALE];
 const DEMO_LAST=["محمدی","کریمی","رحیمی","حسینی","نوری","صادقی","جلالی","قاسمی","موسوی","اکبری","رضایی","احمدی","یزدانی","کاظمی","فرهادی"];
+/* الگوی ساخت نام آزمایشی بر اساس نقش: دستیار و منشی همیشه خانم؛ بقیه (دکتر، لابراتوار، مسئول بیمه، بیمار) تصادفی؛ نام دکترها با «دکتر» شروع می‌شود */
+const DEMO_GENDER={assistant:"f",reception:"f"};
 /* پیش‌فرض تعدادها = ترکیب اولیهٔ کلینیک (۸ دکتر، ۱۰ دستیار، ۵ منشی، ۱ بیمه، ۱ لابراتوار، ۱۰ بیمار، ۱۰ کالا، ۳ هفته)؛ مستقل از اینکه الان چه چیزی در اپ هست، تا بعد از «شروع تمیز» هم صفر نشود */
 const DEMO_BASE={sd:8,sa:10,sr:5,si:1,sl:1,pn:10,vn:10,wn:3};
 let demoN={};
-const demoName=()=>DEMO_FIRST[Math.floor(Math.random()*DEMO_FIRST.length)]+" "+DEMO_LAST[Math.floor(Math.random()*DEMO_LAST.length)];
+const demoName=role=>{
+  const pool=DEMO_GENDER[role]==="f"?DEMO_FEMALE:DEMO_GENDER[role]==="m"?DEMO_MALE:DEMO_FIRST, r=a=>a[Math.floor(Math.random()*a.length)];
+  const taken=new Set([...(cfg?.staff||[]).map(s=>s.name),...(demoName.used||[])]);
+  let n; for(let i=0;i<40;i++){ n=(role==="doctor"?"دکتر ":"")+r(pool)+" "+r(DEMO_LAST); if(!taken.has(n)) break }
+  (demoName.used=demoName.used||new Set()).add(n);
+  return n;
+};
 function demoCount(key,def){ const v=demoN[key]; return v===undefined?(DEMO_BASE[key]??def):v }
 function demoNumRow(key,label,def){
   return `<div style="flex:1 1 90px"><label class="note" for="dn-${key}" style="display:block">${label}</label><input type="number" id="dn-${key}" data-dn="${key}" min="0" max="60" inputmode="numeric" value="${demoCount(key,def)}" style="width:100%;box-sizing:border-box"></div>`;
@@ -1006,8 +1016,9 @@ function staffDemoPanel(){
 async function staffDemoRun(){
   const want={doctor:+demoCount("sd")||0,assistant:+demoCount("sa")||0,reception:+demoCount("sr")||0,insurance:+demoCount("si")||0,lab:+demoCount("sl")||0};
   const pick=a=>a[Math.floor(Math.random()*a.length)];
+  demoName.used=new Set();
   const c=structuredClone(cfg), before=new Set(c.staff.map(x=>x.id)), actions=[];
-  for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
+  for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(role),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
   const next=applyRuleActions(c,actions);
   const fresh=next.staff.filter(x=>!before.has(x.id)); fresh.forEach(x=>x.demo=true);
   const docs=next.staff.filter(x=>x.role==="doctor");
