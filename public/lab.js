@@ -147,7 +147,7 @@ const LAB = (() => {
       </div>
       <div style="margin-top:8px">${L("note", "توضیح (اختیاری): رنگ، دندان، شرایط خاص")}<textarea id="lab-${prefix}-note" data-f="note" style="width:100%;box-sizing:border-box;min-height:48px">${esc(d.note || "")}</textarea></div>
       <div style="margin-top:8px"><label class="note" style="display:block" for="lab-${prefix}-file">پیوست (عکس یا PDF کوچک؛ حداکثر ${fa(MAX_FILES)} فایل)</label>
-        <input type="file" id="lab-${prefix}-file" data-labfile="${prefix}" accept="image/*,application/pdf" multiple>
+        <div class="row" style="gap:8px;align-items:center"><label class="btn">انتخاب فایل<input type="file" id="lab-${prefix}-file" data-labfile="${prefix}" accept="image/*,application/pdf" multiple hidden></label><span class="note">${(d.files || []).length ? fa(d.files.length) + " فایل انتخاب شد" : "فایلی انتخاب نشده"}</span></div>
         ${(d.files || []).length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${d.files.map((f, i) => `<span class="chip assistant">${esc(f.name)} <button class="x" data-lab="rmfile" data-form="${prefix}" data-i="${i}" aria-label="برداشتن">✕</button></span>`).join("")}</div>` : ""}</div>
       ${m ? `<p class="${m.bad ? "warn" : "okline"}" style="margin-top:8px">${esc(m.t)}</p>` : ""}
       <p class="row" style="margin-top:8px"><button class="btn primary" data-lab="new" data-form="${prefix}">ارسال به لابراتوار</button></p></div>`;
