@@ -308,7 +308,7 @@ function staffPages(id){
   const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
   add("shifts","برنامهٔ هفتگی",weekCalHtml(id));
-  add("me","مشخصات و ساعت کار من",selfProfileHtml(id));
+  add("me","مشخصات من",selfProfileHtml(id));
   const done=availSent(a)&&!p;
   add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done&&availUrgent(),urgent:!done&&availUrgent(),sub:done?"ثبت شد":(availUrgent()?"هنوز نفرستادی":"")});
   add("patients","بیماران من",patientsPanel(id,"list"));
@@ -356,7 +356,7 @@ function todayPatientsPanel(id){
 function staffView(id){
   const me=byId(id);
   let h=`<h2>سلام ${esc(me.name)}</h2>`;
-  const meBtn=`<p class="row" style="margin:6px 0 10px"><button class="btn" data-page="me">مشخصات و ساعت کار من</button></p>`;
+  const meBtn=`<p class="row" style="margin:6px 0 10px"><button class="btn" data-page="me">مشخصات من</button></p>`;
   if(me.role==="insurance") return h+meBtn+insuranceTab();
   if(me.role==="lab") return h+meBtn+LAB.portal(id);
   h+=staffAlerts(id)+myShiftsHome(id)+todayPatientsPanel(id);
@@ -1107,7 +1107,7 @@ async function reportDemoRun(){
   const n=Math.min(8,Math.max(0,+demoCount("wn",3)||0)), staff=(cfg.staff||[]).filter(s=>!["insurance","lab"].includes(s.role));
   for(let i=0;i<n;i++){
     const counts={}, names={}, roles={}; for(const s of staff){ counts[s.id]=Math.floor(Math.random()*8); names[s.id]=s.name; roles[s.id]=s.role }
-    const id="wk"+uid()+i, w={id,demo:true,at:Date.now()-i*3600e3,counts,staffNames:names,staffRoles:roles}; await db.doc("archive/"+id).set(w); archive[id]=w;
+    const id="wk"+uid()+i, w={id,demo:true,at:Date.now()-i*7*864e5,counts,staffNames:names,staffRoles:roles}; await db.doc("archive/"+id).set(w); archive[id]=w;
   }
   demoN={}; dmsg("rep",`${fa(n)} هفتهٔ آزمایشی به گزارش اضافه شد.`); render();
 }
@@ -1235,6 +1235,8 @@ function hoursChartHtml(id){
     h+=` <span class="note">جمع: ${fa(tot)} ساعت</span>${barsHtml(days)}<p class="note" style="margin:6px 0 0">هر شیفت ${fa(SHIFT_HOURS)} ساعت حساب شده (ساعت دقیق در اپ ثبت نمی‌شود).</p></div>`;
   }
   const weeks=Object.values(archive||{}).filter(w=>w.counts&&id in w.counts).sort((a,b)=>a.at-b.at).slice(-6).map(w=>({l:jd(w.at),v:(w.counts[id]||0)*SHIFT_HOURS}));
+  /* اگر چند هفته تاریخ یکسان داشتند (مثلاً داده‌های آزمایشی قدیمی)، برچسب تاریخ گمراه‌کننده است؛ شمارهٔ هفته می‌گذاریم */
+  if(new Set(weeks.map(w=>w.l)).size<weeks.length) weeks.forEach((w,i)=>w.l="هفتهٔ "+fa(i+1));
   if(weeks.length) h+=`<div class="panel"><strong>ساعت کار هفته‌های اخیر</strong>${barsHtml(weeks)}</div>`;
   return h;
 }
