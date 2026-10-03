@@ -2736,10 +2736,10 @@ function apptFormHtml(){
 function apptRowHtml(id,a,showDoc){
   const st=APPT_ST[a.status]||APPT_ST.scheduled;
   return `<div style="border-top:1px solid var(--line);padding:8px 0;display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap">
-    <div><strong>${esc(a.name)}</strong>${showDoc?` <span class="note">— ${esc(nm(a.doctor))}</span>`:""}${a.time?` <span class="note">${esc(a.time)}</span>`:""}${a.patientId?` <button class="btn quiet" data-pat="${a.patientId}" style="padding:2px 8px">پرونده</button>`:""}${a.note?`<div class="note">${esc(a.note)}</div>`:""}</div>
+    <div>${a.patientId?`<button class="linkbtn" data-pat="${a.patientId}"><strong>${esc(a.name)}</strong></button>`:`<strong>${esc(a.name)}</strong>`}${showDoc?` <span class="note">— ${esc(nm(a.doctor))}</span>`:""}${a.time?` <span class="note">${esc(a.time)}</span>`:""}${a.note?`<div class="note">${esc(a.note)}</div>`:""}</div>
     <div class="row">
       <span style="color:${st[1]}">${st[0]}</span>
-      ${a.status==="scheduled"?`<button class="btn quiet" data-apst="${id}|done">آمد</button><button class="btn quiet" data-apst="${id}|noshow">نیامد</button><button class="btn quiet" data-apst="${id}|cancelled">لغو</button>`:""}
+      ${a.status==="scheduled"?`${a.date<=todayISO()?`<button class="btn quiet" data-apst="${id}|done">آمد</button><button class="btn quiet" data-apst="${id}|noshow">نیامد</button>`:""}<button class="btn quiet" data-apst="${id}|cancelled">لغو</button>`:""}
       <button class="x" data-act="ap-del" data-id="${id}">حذف</button>
     </div></div>`;
 }
