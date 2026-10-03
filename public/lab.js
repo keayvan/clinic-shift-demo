@@ -270,9 +270,10 @@ const LAB = (() => {
   function sheetPanel(p) {
     const r = role(); if (!CLINIC.includes(r)) return "";
     const mine = list().filter(o => o.patientId ? o.patientId === p.id : NLU.norm(o.patientName) === NLU.norm(p.name));
-    return `<details style="margin-top:10px" ${mine.some(active) ? "open" : ""}><summary style="cursor:pointer;font-weight:700">لابراتوار${mine.length ? " (" + fa(mine.length) + ")" : ""}</summary>
+    const open = typeof patOpen !== "undefined" && patOpen.lab;
+    return `<details class="psec" data-sec="lab" ${open ? "open" : ""}><summary>لابراتوار${mine.length ? " (" + fa(mine.length) + ")" : ""}</summary><div class="psecbody">
       ${mine.length ? mine.map(card).join("") : '<p class="note">برای این بیمار کاری به لابراتوار نرفته.</p>'}
-      <div style="margin-top:8px">${form("s", { patient: p.name, lock: true, doctor: p.doctor })}</div></details>`;
+      <div style="margin-top:8px">${form("s", { patient: p.name, lock: true, doctor: p.doctor })}</div></div></details>`;
   }
 
   /* ---------- رویدادها ---------- */

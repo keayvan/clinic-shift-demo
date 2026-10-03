@@ -94,6 +94,52 @@
       (a ? `<p class="warn" style="margin-top:6px"><strong>⚠ حساسیت: </strong>${esc(a)}</p>` : "");
   }
 
+  /* گروه‌بندی نمایش پرونده برای بخش‌های بسته‌شونده: [{key,title,html}] */
+  function viewGroups(p) {
+    const L = lines(p), pick = labs => L.filter(([l]) => labs.includes(l));
+    const box = rows => `<div style="margin:6px 0;font-size:.92rem">${rows.map(([l, v]) => `<div style="margin-top:2px"><strong>${l}: </strong>${esc(v)}</div>`).join("")}</div>`;
+    const defs = [["info", "مشخصات", ["شمارهٔ پرونده", "کد ملی", "نام پدر", "سال تولد", "سن", "شغل", "نشانی", "تلفن همراه", "تلفن ثابت", "تلفن اضطراری", "آشنایی با کلینیک"]],
+      ["ins", "بیمه", ["بیمهٔ پایه", "بیمهٔ مکمل", "شمارهٔ بیمه", "اعتبار معرفی‌نامه", "فرانشیز", "سقف بیمه", "OPG (بیمه)"]],
+      ["med", "سابقهٔ پزشکی", ["بیماری‌ها", "در حال مصرف دارو", "داروهای مصرفی", "باردار", "سابقهٔ سقط"]]];
+    return defs.map(([key, title, labs]) => ({ key, title, html: pick(labs).length ? box(pick(labs)) : '<p class="note">اطلاعاتی ثبت نشده.</p>' }));
+  }
+
+  /* اطلاعات آزمایشی تصادفی: فقط جاهای خالی را پر می‌کند (rnd برای تست قابل تعویض است) */
+  function demo(p, rnd) {
+    rnd = rnd || Math.random;
+    const pick = a => a[Math.floor(rnd() * a.length)], int = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+    const digits = n => Array.from({ length: n }, () => int(0, 9)).join("");
+    const o = { ...p, insurance: { ...(p.insurance || {}) } }, ins = o.insurance;
+    const setIf = (k, v) => { if (o[k] === undefined || o[k] === null || o[k] === "" || (Array.isArray(o[k]) && !o[k].length)) o[k] = v; };
+    const py = persianYear() || 1405;
+    setIf("fileNo", String(int(1000, 9999)));
+    setIf("nationalId", digits(10));
+    setIf("fatherName", pick(["حسن", "علی", "محمود", "رضا", "اکبر", "جواد", "مهدی", "ابراهیم"]));
+    if (!o.birthYear) o.birthYear = py - int(8, 70);
+    o.age = ageFromBirth(o.birthYear, py) ?? o.age;
+    setIf("job", pick(["کارمند", "معلم", "دانشجو", "مهندس", "راننده", "خانه‌دار", "بازنشسته", "آزاد"]));
+    setIf("address", pick(["تهران، ", "کرج، ", "اصفهان، ", "شیراز، ", "مشهد، "]) + pick(["خیابان آزادی", "بلوار کشاورز", "خیابان ولیعصر", "میدان انقلاب"]) + "، پلاک " + int(1, 120));
+    setIf("phone", "09" + int(10, 39) + digits(7));
+    setIf("phoneHome", "021" + digits(8));
+    setIf("phoneEmerg", "09" + int(10, 39) + digits(7));
+    setIf("referral", [pick(REFERRAL)[0]]);
+    if (!ins.name) ins.name = pick(["تامین‌اجتماعی", "بیمهٔ ملی", "رازی", "آزاد"]);
+    if (ins.name !== "آزاد") {
+      ins.number = ins.number || digits(9);
+      ins.supplementary = ins.supplementary || pick(["دانا", "آسیا", "ایران", ""]);
+      ins.letterExpiry = ins.letterExpiry || `${py}/${String(int(1, 12)).padStart(2, "0")}/${String(int(1, 28)).padStart(2, "0")}`;
+      ins.franchise = ins.franchise || pick(["۱۰٪", "۲۰٪", "۳۰٪"]);
+      ins.cap = ins.cap || pick([40e6, 50e6, 60e6]);
+      ins.opg = ins.opg || pick(["دارد", "ندارد"]);
+    }
+    if (!arr(o.allergyFlags).length && rnd() < .3) o.allergyFlags = [pick(ALLERGY)[0]];
+    if (!arr(o.condFlags).length && rnd() < .5) o.condFlags = [pick(COND)[0]];
+    if (o.onMeds === undefined || o.onMeds === null) o.onMeds = rnd() < .35;
+    if (o.onMeds && !o.medications) o.medications = pick(["آسپرین", "متفورمین", "لوزارتان", "لووتیروکسین"]);
+    if (o.pregnant === undefined) o.pregnant = null;
+    return o;
+  }
+
   /* ---------- PDF و چاپ ---------- */
   const CONSENT = [
     "اینجانب ........................ رضایت شخصی و کامل خود را نسبت به پرداخت هزینهٔ مابه‌التفاوت درمان اعلام می‌دارم.",
@@ -109,5 +155,5 @@
     return `<div style="margin-top:16px;page-break-inside:avoid"><strong style="font-size:14px">رضایت‌نامه</strong>${CONSENT.map(t => `<p style="font-size:12px;line-height:1.9;margin:8px 0">${t}</p>${sig}`).join("")}</div>`;
   }
 
-  root.PF = { fields, read, derive, view, pdf, consent, allergyText, condText, ageFromBirth, persianYear, lines, CONSENT, REFERRAL, ALLERGY, COND };
+  root.PF = { fields, read, derive, view, viewGroups, demo, pdf, consent, allergyText, condText, ageFromBirth, persianYear, lines, CONSENT, REFERRAL, ALLERGY, COND };
 })(typeof globalThis !== "undefined" ? globalThis : this);

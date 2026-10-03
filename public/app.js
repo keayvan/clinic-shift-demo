@@ -50,7 +50,7 @@ function todayJalali(){ const d=new Date(); return gregorianToJalali(d.getFullYe
 
 let db=null, sample=true, downloads=true;
 let cfg=null, avail={}, sched=null, archive={}, patients={}, inventory={}, appts={}, loaded={cfg:false,avail:false,sched:false};
-let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=true;
+let patDraft={openId:null,name:"",text:"",noteText:"",noteErr:"",pending:null,msg:"",iName:"",iAge:"",iNid:"",iPhone:"",iDoc:"",iIns:"",iInsNum:"",iInsCap:"",editingInfo:false}, patErr="", patBusy=false, patMsg="", patListOpen=true, patOpen={};
 let invDraft={name:"",unit:"",qty:"",minQty:""}, invErr="";
 let apptDraft={name:"",doctor:"",jy:null,jm:null,jd:null,time:"",note:""}, apptErr="", apptMsg="";
 let patSearch="", patFilter={doc:"",plan:"",sort:"new"};
@@ -119,7 +119,7 @@ async function exportInsXlsx(){
   SYNC.subscribe(()=>{ if(who==="manager") render(); });
   if(!LDB.hasData()) await seedDemo();
   else{
-    if(!LDB.hasAny("patients")) await seedPatientsIfMissing();
+    if(!LDB.hasAny("patients")){ await seedPatientsIfMissing(); for(const d of (await LDB.collection("patients").get()).docs) await LDB.doc("patients/"+d.id).set(PF.demo(d.data())); }
     if(!LDB.hasAny("inventory")) await seedInventoryIfMissing();
   }
   { const c=(await LDB.doc("clinic/config").get()).data();
@@ -1877,7 +1877,7 @@ function outcomeMsg(results){
   }).join(" ");
 }
 function openPatientSheet(pid){
-  patDraft.openId=pid; patDraft.noteText=""; patDraft.noteErr=""; patDraft.pending=null; patDraft.msg=""; patDraft.editingInfo=false; patDraft.opgMsg="";
+  patDraft.openId=pid; patDraft.noteText=""; patDraft.noteErr=""; patDraft.pending=null; patDraft.msg=""; patDraft.editingInfo=false; patDraft.opgMsg=""; patOpen={};
   renderPatientSheet();
 }
 function planItemsPlain(p){ return p.plan.length?p.plan.map(it=>`${it.status==="done"?"✓":"—"} ${planItemLabel(it)}`).join("<br>"):"کاری ثبت نشده"; }
@@ -1969,18 +1969,23 @@ function renderPatientSheet(){
   const exportRow=`<div class="row" style="margin:8px 0"><button class="btn" data-act="pat-pdf">دانلود PDF</button><button class="btn quiet" data-act="pat-print">چاپ</button></div>`;
   const showEdit=!isMgr||patDraft.editingInfo;
   const info=showEdit?`${PF.fields("e",p)}
-    ${isMgr?"":`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-info-save">ذخیره اطلاعات</button></p>`}
-    ${PF.allergyText(p)?`<p class="warn" style="margin-top:6px"><strong>⚠ حساسیت: </strong>${esc(PF.allergyText(p))}</p>`:""}`
+    ${isMgr?"":`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-info-save">ذخیره اطلاعات</button></p>`}`
     :PF.view(p);
-  const rows=p.plan.map(it=>!canEditPlan?`<div class="row" style="justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding:6px 0">
+  const rowOf=it=>!canEditPlan?`<div class="row" style="justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding:6px 0">
       <span style="color:${it.status==="done"?"var(--ok)":"var(--warn)"};${it.status==="done"?"text-decoration:line-through":"font-weight:600"}">${it.status==="done"?"✓ ":""}${planItemLabel(it)}</span>
       <span class="note">${it.price?fa(it.price)+" تومان":"—"}</span>
     </div>`:`<div class="row" style="justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding:6px 0;flex-wrap:wrap">
       <label class="row" style="gap:6px;align-items:flex-start"><input type="checkbox" data-tog="${it.id}" ${it.status==="done"?"checked":""}><span style="color:${it.status==="done"?"var(--ok)":"var(--warn)"};${it.status==="done"?"text-decoration:line-through":"font-weight:600"}">${planItemLabel(it)}</span></label>
       <span class="row" style="gap:6px"><input type="number" min="0" step="1000" data-price="${it.id}" value="${it.price||""}" placeholder="قیمت (تومان)" style="width:120px"><button class="x" data-delitem="${it.id}">حذف</button></span>
-    </div>`).join("")||`<p class="note">هنوز کاری برای این بیمار ثبت نشده.</p>`;
-  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${exportRow}${info}${LAB.sheetPanel(p)}<div class="clean">${rows}</div>
-    <div style="margin-top:12px">`;
+    </div>`;
+  const todoIt=p.plan.filter(it=>it.status!=="done"), doneIt=p.plan.filter(it=>it.status==="done");
+  const grp=(t,l)=>l.length?`<div class="note" style="margin-top:8px;font-weight:700">${t} (${fa(l.length)})</div>${l.map(rowOf).join("")}`:"";
+  const rows=grp("لازم است انجام شود",todoIt)+grp("انجام‌شده",doneIt)||`<p class="note">هنوز کاری برای این بیمار ثبت نشده.</p>`;
+  const sec=(key,title,inner,forceOpen)=>`<details class="psec" data-sec="${key}" ${forceOpen||patOpen[key]?"open":""}><summary>${title}</summary><div class="psecbody">${inner}</div></details>`;
+  const allergyLine=PF.allergyText(p)?`<p class="warn" style="margin:6px 0"><strong>⚠ حساسیت: </strong>${esc(PF.allergyText(p))}</p>`:"";
+  /* کارهای انجام‌شده و لازم: همیشه باز و بالای پرونده، قبل از مشخصات */
+  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${allergyLine}${exportRow}
+    <div class="psec fixed"><div class="psectitle">کارهای انجام‌شده و لازم</div><div class="psecbody"><div class="clean">${rows}</div><div style="margin-top:12px">`;
   if(canEditPlan){
     if(patDraft.pending){
       body+=`<strong>این‌طور فهمیدم:</strong><ul class="clean issues">${patDraft.pending.items.map(x=>`<li>${x.op==="remove_plan"?"حذف: ":x.status==="done"?"✓ انجام‌شده: ":"نیاز: "}${planItemLabel(x)}</li>`).join("")}${(patDraft.pending.invActions||[]).map(a=>{const it=inventory[a.item],short=it&&(it.qty-a.qty)<0;return `<li>📦 ${fa(a.qty)} ${esc(it?.unit||"")} ${esc(it?.name||"")} از انبار کم می‌شه${short?' <strong style="color:var(--warn)">(موجودی کافی نیست!)</strong>':""}</li>`}).join("")}${(patDraft.pending.allergyActions||[]).map(a=>`<li>${a.negative?"آلرژی: ندارد":`⚠ آلرژی: ${esc(a.value)}`}</li>`).join("")}</ul>
@@ -1994,13 +1999,18 @@ function renderPatientSheet(){
         <p class="row" style="margin-top:8px"><button class="btn primary" data-act="pat-parse">بررسی</button></p>`;
     }
   }
-  body+=`</div>`;
-  body+=`<hr><div class="row" style="justify-content:space-between"><strong>OPG و تصاویر</strong><label class="btn">📷 آپلود OPG<input type="file" id="patOpg" accept="image/*" multiple hidden></label></div>
+  body+=`</div></div></div>`;
+  /* بقیهٔ بخش‌ها: بسته، با کلیک باز می‌شوند */
+  if(showEdit){ let n=0; body+=info.replace(/<details class="pfsec"\s*(open)?\s*style="margin-top:10px">/g,()=>{const k="pf"+(n++);return `<details class="pfsec psec" data-sec="${k}" ${patOpen[k]?"open":""}>`}); }
+  else for(const g of PF.viewGroups(p)) body+=sec(g.key,g.title,g.html);
+  body+=LAB.sheetPanel(p);
+  body+=sec("opg","OPG و تصاویر",`<div class="row" style="justify-content:flex-end"><label class="btn">📷 آپلود OPG<input type="file" id="patOpg" accept="image/*" multiple hidden></label></div>
     ${patDraft.opgMsg?`<p class="${patDraft.opgBad?"warn":"okline"}">${esc(patDraft.opgMsg)}</p>`:""}
-    <div class="imp-opgs">${(p.opg||[]).map(o=>`<figure><button data-popg="${o.id}"><img src="${o.thumb}" alt="OPG"></button><figcaption>${esc(o.date)} <button class="x" data-popg-del="${o.id}">حذف</button></figcaption></figure>`).join("")||`<p class="note">هنوز تصویری آپلود نشده.</p>`}</div>`;
-  body+=`<hr>`+financeHtml(p);
+    <div class="imp-opgs">${(p.opg||[]).map(o=>`<figure><button data-popg="${o.id}"><img src="${o.thumb}" alt="OPG"></button><figcaption>${esc(o.date)} <button class="x" data-popg-del="${o.id}">حذف</button></figcaption></figure>`).join("")||`<p class="note">هنوز تصویری آپلود نشده.</p>`}</div>`);
+  body+=sec("fin","امور مالی",financeHtml(p));
   if(isMgr) body+=`${patErr?`<p class="warn">${esc(patErr)}</p>`:""}<p class="row" style="margin-top:16px"><button class="btn ${patDraft.editingInfo?"primary":"quiet"}" data-act="pat-toggle-edit">${patDraft.editingInfo?"ذخیره و پایان ویرایش":"ویرایش اطلاعات"}</button></p>`;
   Shell.sheet(body,root=>{
+    root.querySelectorAll("details[data-sec]").forEach(d=>d.ontoggle=()=>{patOpen[d.dataset.sec]=d.open});
     root.querySelectorAll("[data-tog]").forEach(cb=>cb.onchange=()=>toggleItem(patDraft.openId,cb.dataset.tog));
     root.querySelectorAll("[data-delitem]").forEach(b=>b.onclick=()=>deleteItem(patDraft.openId,b.dataset.delitem));
     root.querySelectorAll("[data-price]").forEach(i=>i.onchange=()=>setItemPrice(patDraft.openId,i.dataset.price,Math.max(0,Math.floor(+i.value||0))));
@@ -2229,6 +2239,7 @@ function patientsTab(){
   const rows=all.filter(([,p])=>(!q||NLU.norm(p.name).includes(q))&&(!F.doc||p.doctor===F.doc)&&planOk(p)).sort(SORT[F.sort]||SORT.new);
   const opt=(v,l,cur)=>`<option value="${v}" ${cur===v?"selected":""}>${l}</option>`;
   let h=`<div class="panel"><strong>بیماران</strong>
+    <p class="row" style="margin-top:6px"><button class="btn quiet" data-act="pat-demo-fill">تکمیل اطلاعات آزمایشی همهٔ بیماران</button>${patMsg?`<span class="okline">${patMsg}</span>`:""}</p>
     <div class="row" style="margin-top:8px"><input type="text" id="patSearchBox" placeholder="جستجوی اسم بیمار…" value="${esc(patSearch)}" style="flex:1 1 160px">
     <button class="btn" data-act="pat-search">جستجو</button>${patSearch?`<button class="btn quiet" data-act="pat-search-clear">پاک کردن</button>`:""}</div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:8px">
@@ -2586,5 +2597,10 @@ async function act(a,btn){
   if(a==="clinic-name-save") return clinicNameSave();
   if(a==="pat-search"){patSearch=($("#patSearchBox")?.value||"").trim();return render()}
   if(a==="pat-search-clear"){patSearch="";return render()}
+  if(a==="pat-demo-fill"){
+    btn.disabled=true; let n=0;
+    for(const [id,p] of Object.entries(patients)){ const q=PF.demo(p); if(JSON.stringify(q)!==JSON.stringify(p)){ await db.doc("patients/"+id).set(q); patients[id]=q; n++ } }
+    patMsg=`اطلاعات ${fa(n)} بیمار تکمیل شد (فقط جاهای خالی).`; return render();
+  }
   if(a==="pat-filter-clear"){patSearch="";patFilter={doc:"",plan:"",sort:"new"};return render()}
 }

@@ -58,5 +58,26 @@ has("select yes", f, '<option value="yes" selected>');
 has("consent has signature", PF.consent(), "امضا");
 eq("consent paragraphs", PF.CONSENT.length, 2);
 
+
+// گروه‌های نمایش و اطلاعات آزمایشی
+{
+  const g = PF.viewGroups({ name: "الف", plan: [], fileNo: "12", insurance: { name: "رازی" }, onMeds: true, medications: "آسپرین" });
+  eq("view groups keys", g.map(x => x.key), ["info", "ins", "med"]);
+  has("info group has file no", g[0].html, "شمارهٔ پرونده");
+  has("ins group has insurer", g[1].html, "رازی");
+  has("med group has meds", g[2].html, "آسپرین");
+  const d = PF.demo({ name: "ب", nationalId: "0012345678", insurance: { name: "رازی", cap: 1 } }, () => 0.5);
+  eq("demo keeps existing id", d.nationalId, "0012345678");
+  eq("demo keeps existing insurer", d.insurance.name, "رازی");
+  eq("demo keeps existing cap", d.insurance.cap, 1);
+  eq("demo fills file no", typeof d.fileNo, "string");
+  eq("demo national id length kept", d.nationalId.length, 10);
+  eq("demo fills age from birth year", d.age, PF.ageFromBirth(d.birthYear));
+  const d2 = PF.demo({ name: "پ", plan: [] }, () => 0.1);
+  eq("demo phone format", /^09\d{9}$/.test(d2.phone), true);
+  eq("demo national id 10 digits", /^\d{10}$/.test(d2.nationalId), true);
+  const d3 = PF.demo(d2, () => 0.9);
+  eq("demo is idempotent on filled fields", [d3.fileNo, d3.phone, d3.nationalId], [d2.fileNo, d2.phone, d2.nationalId]);
+}
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
