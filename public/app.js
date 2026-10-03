@@ -176,6 +176,7 @@ function renderWho(){
   $("#whoCur").textContent=who==="manager"?"مدیر مجموعه":nm(who);
 }
 
+addEventListener("scroll",()=>document.body.classList.toggle("scrolled",scrollY>350),{passive:true});
 function render(){
   if(!loaded.cfg||!loaded.avail||!loaded.sched) return;
   const app=$("#app");
@@ -187,6 +188,7 @@ function render(){
   const newTabs=app.querySelector(".tabs");
   if(newTabs){ newTabs.scrollLeft=tabScroll; newTabs.querySelector('[aria-selected="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}); }
   syncStaffPage();
+  if(Shell.kind()==="mgrprompt") Shell.refresh(mgrPromptBox(true));
   bind();
   if(keepY>0&&Math.abs(window.scrollY-keepY)>2) scrollTo(0,keepY);   /* با هر به‌روزرسانی پس‌زمینه صفحه به بالا نپرد */
 }
@@ -805,7 +807,7 @@ function missingList(){return (cfg.staff||[]).filter(s=>s.role!=="insurance"&&s.
 function schedTab(){
   const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance"&&s.role!=="lab").length;
   const openAl=!!sched&&((sched.alerts||[]).some(a=>!a.resolved));
-  let h="";
+  let h=sched?mgrPromptBox():"";
   h+=`<div class="panel">
     <p style="margin:0 0 8px"><strong>${fa(total-miss.length)} از ${fa(total)} نفر</strong> حضور هفته بعد را فرستاده‌اند.</p>
     ${miss.length?`<p class="note" style="margin:0 0 12px">هنوز نفرستاده‌اند: ${miss.map(s=>esc(s.name)).join("، ")}</p>`:""}
@@ -833,7 +835,7 @@ function schedTab(){
   if(sched.issues?.length) h+=`<div class="panel"><strong>نیاز به توجه</strong><ul class="clean issues">${sched.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`;
   if(sched.log?.length) h+=`<div class="panel" style="margin-top:16px"><strong>تغییرات بعد از ساخت برنامه</strong><ul class="clean issues">${[...sched.log].reverse().slice(0,15).map(l=>`<li><strong>${l.who==="manager"?"مدیر":esc(nm(l.who))}</strong> <span class="note">${new Date(l.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span><br>${(l.items||[]).map(esc).join("<br>")}</li>`).join("")}</ul></div>`;
   h+=`<p class="note">ساخته شده: ${new Date(sched.generatedAt).toLocaleString("fa-IR")}</p>`;
-  return h+mgrPromptBox();
+  return h+`<button class="mgrfab" data-act="mgr-open" aria-label="تغییر برنامه این هفته">✎ تغییر برنامه</button>`;
 }
 
 function availTab(){
@@ -1536,12 +1538,13 @@ function alertsListPanel(){
   const open=(sched.alerts||[]).filter(a=>!a.resolved); if(!open.length) return "";
   return `<div class="panel"><strong>هشدارها (${fa(open.length)})</strong><p class="note" style="margin:2px 0 6px">سیستم این‌ها را خودش نتوانست حل کند.</p>`+open.map(a=>`<div class="alert"><span>${esc(a.text)}</span><button class="x" data-close="${a.id}">بستن</button></div>`).join("")+`</div>`;
 }
-/* جعبهٔ دستور مدیر: همیشه ته صفحه می‌چسبد (sticky) تا با اسکرول هم در دسترس باشد */
-function mgrPromptBox(){
-  let h=`<div class="mgrdock ${mgrPlan?"pending":""}">`;
+/* جعبهٔ دستور مدیر: بالای تب برنامه؛ با اسکرول یک دکمهٔ شناور آن را در برگه باز می‌کند */
+function mgrPromptBox(inSheet){
+  const sx=inSheet?"S":"";
+  let h=`<div class="${inSheet?"":"panel "}${mgrPlan?"pending":""}">`;
   if(!mgrPlan){
-    h+=`<label for="mgrTxt" class="note" style="display:block"><strong>تغییر برنامه این هفته</strong> — دستور را عادی بنویس</label>
-    <textarea id="mgrTxt" style="min-height:44px;margin-top:4px" placeholder="مثلاً: زهرا اخراج شد. دکتر نوری را سه‌شنبه صبح روی یونیت ۲ بگذار.">${esc(mgrDraft)}</textarea>
+    h+=`<label for="mgrTxt${sx}" class="note" style="display:block"><strong>تغییر برنامه این هفته</strong> — دستور را عادی بنویس</label>
+    <textarea id="mgrTxt${sx}" style="min-height:64px;margin-top:4px" placeholder="مثلاً: زهرا اخراج شد. دکتر نوری را سه‌شنبه صبح روی یونیت ۲ بگذار.">${esc(mgrDraft)}</textarea>
     ${mgrErr?`<p class="warn">${esc(mgrErr)}</p>`:""}
     <p class="row" style="margin-top:8px"><button class="btn primary" data-act="mgr-parse" ${mgrBusy||!sample?"disabled":""}>${mgrBusy?"در حال بررسی…":"بررسی"}</button></p>`;
   }else{
@@ -2795,7 +2798,7 @@ function bind(){
   document.querySelectorAll("[data-fbtype]").forEach(b=>b.onclick=()=>{fbType=b.dataset.fbtype;render()});
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
-  const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
+  for(const sel of ["#mgrTxt","#mgrTxtS"]){ const mt=$(sel); if(mt) mt.oninput=e=>mgrDraft=e.target.value; }
   document.querySelectorAll("[data-self-save]").forEach(b=>b.onclick=async()=>{
     const root=document.querySelector("#pageBody")||document, ok=await staffSave(b.dataset.selfSave,readStaffForm(root,"self"));
     const m=document.querySelector("#selfMsg"); if(m) m.textContent=ok?"ذخیره شد.":"ذخیره نشد.";
@@ -2888,7 +2891,10 @@ async function act(a,btn){
   if(a==="fb-done-toggle"){fbShowDone=!fbShowDone;return render();}
   if(a==="seen"){try{localStorage.setItem("seen_"+who,String(Date.now()))}catch(e){};return render()}
   if(a==="mgr-parse") return mgrParseRun();
-  if(a==="mgr-apply") return mgrApply();
+  if(a==="mgr-open"){
+    Shell.sheet(`<h2>تغییر برنامه این هفته</h2><div id="pageBody">${mgrPromptBox(true)}</div>`,null,{kind:"mgrprompt"}); bind(); const t=$("#mgrTxtS"); if(t) t.focus(); return;
+  }
+  if(a==="mgr-apply"){ await mgrApply(); if(Shell.kind()==="mgrprompt") Shell.close(); return; }
   if(a==="mgr-cancel"){mgrPlan=null;return render()}
   if(a==="dl"&&downloads){
     const doc=`<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>برنامه شیفت</title><style>body{font-family:Vazirmatn,Tahoma,sans-serif}@page{size:A4 landscape;margin:10mm}</style></head><body>${printHtml()}</body></html>`;
