@@ -274,3 +274,7 @@ body.scrolled .mgrfab{display:flex}
 @media print{.mgrfab{display:none!important}}
 .oclink{font-size:.78rem;font-weight:600;margin-inline-start:6px}
 .kvgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 14px;margin-top:8px}.kv{display:flex;flex-direction:column;gap:1px;min-width:0;overflow-wrap:anywhere}
+.gaps{margin-top:8px;border-top:1px dashed var(--warn);padding-top:6px}
+.gapitem{padding:6px 0}
+.gapitem+.gapitem{border-top:1px solid var(--line)}
+.gaphd{font-weight:700;color:var(--warn);font-size:.9rem}

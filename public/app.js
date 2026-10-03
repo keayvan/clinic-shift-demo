@@ -829,17 +829,17 @@ function schedTab(){
   if(!sched) return h+`<p class="note">وقتی حضورها رسید، «ساخت برنامه» را بزنید. برنامه با قوانین بخش «قوانین» چیده می‌شود.</p>`;
   {let used=0,tot=0;for(const k in sched.slots){used+=sched.slots[k].pairs.length;tot+=cfg.settings.chairs}
    h+=`<p><strong>پر بودن یونیت‌ها در هفته: ${fa(Math.round(100*used/Math.max(tot,1)))}٪</strong> <span class="note">(${fa(used)} از ${fa(tot)} یونیت‌شیفت)</span></p>`;}
-  h+=`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}${ocLink(k)}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
+  h+=gapsSummary()+`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}${ocLink(k)}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
     const sl=sched.slots?.[k+"_"+sk]||{pairs:[],reception:[],free:[]};
     const u=sl.pairs.length,ch=cfg.settings.chairs;
     let c=`<div class="shift"><h4>${sn}<span class="units ${u>=ch?"full":"gap"}">${fa(u)} از ${fa(ch)} یونیت</span></h4>`;
     if(!sl.pairs.length) c+=`<p class="note" style="margin:0">دکتری نیست</p>`;
     for(const p of sl.pairs) c+=`<div class="pair">${p.u?`<span class="unitno" title="یونیت">${fa(p.u)}</span>`:""}<span class="chip doctor">${esc(nm(p.d))}${spec(p.d)?`<span class="spec">${esc(spec(p.d))}</span>`:""}</span><span class="link"></span>${p.a?`<span class="chip assistant">${esc(nm(p.a))}</span>`:`<span class="chip missing">بدون دستیار</span>`}</div>`;
     c+=`<div class="pair">${sl.reception.length?sl.reception.map(r=>`<span class="chip reception">${esc(nm(r))}</span>`).join(""):`<span class="chip missing">بدون منشی</span>`}</div>`;
+    {const gh=gapsHtmlFor(k+"_"+sk); if(gh) c+=`<div class="gaps">${gh}</div>`;}
     return c+`</div>`;
   }).join("")+`</div></section>`).join("")+`</div>`;
   h+=conflictBanner();
-  h+=gapsPanel();
   h+=requestsPanel()+alertsListPanel();
   if(sched.issues?.length) h+=`<div class="panel"><strong>نیاز به توجه</strong><ul class="clean issues">${sched.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`;
   if(sched.log?.length) h+=`<div class="panel" style="margin-top:16px"><strong>تغییرات بعد از ساخت برنامه</strong><ul class="clean issues">${[...sched.log].reverse().slice(0,15).map(l=>`<li><strong>${l.who==="manager"?"مدیر":esc(nm(l.who))}</strong> <span class="note">${new Date(l.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span><br>${(l.items||[]).map(esc).join("<br>")}</li>`).join("")}</ul></div>`;
@@ -2117,13 +2117,9 @@ function gapCands(key,g){
   if(g.t==="unit") return (sl.spare||[]).filter(x=>byId(x)&&!slotClash(sl,x)).filter(x=>{const r=(cfg.rules||[]).find(y=>y.type==="unit_pref"&&y.staff===x);return !r?.allowed?.length||r.allowed.includes(g.u)}).map(x=>({id:x,ok:true}));
   return [];
 }
-function gapsPanel(){
-  if(!sched) return "";
-  const rows=[];
-  for(const [k,dn] of DAYS) for(const [sk,sn] of SHIFTS){
-    const key=k+"_"+sk, gs=slotGaps(sched,key); if(!gs.length) continue;
-    for(const g of gs){
-      const cands=gapCands(key,g);
+/* جای خالی‌ها: هر کدام زیر همان شیفتِ همان روز (در تخته)، با دکمه‌های پر کردن با یک کلیک */
+function gapItemHtml(key,g){
+  const cands=gapCands(key,g);
       const what=g.t==="asst"?`${nm(g.d)} (یونیت ${fa(g.u)}) دستیار ندارد`:g.t==="unit"?`یونیت ${fa(g.u)} خالی است`:`منشی کم است`;
       let btns="";
       for(const c of cands){
@@ -2135,13 +2131,17 @@ function gapsPanel(){
       }
       const notAllowed=g.t==="asst"&&cands.length&&!cands.some(c=>c.ok);
       if(g.t==="asst"&&cands.length) btns+=pendingGapReq(key,g.d)?`<span class="note">از آنکال‌ها پرسیده شده؛ جواب‌ها در «درخواست‌ها»</span>`:`<button class="btn quiet" data-gask="${key}|${g.d}">از آنکال‌ها بپرس</button>`;
-      rows.push(`<div style="border-top:1px solid var(--line);padding:8px 0"><div><strong>${dn} ${sn}:</strong> ${esc(what)}</div>
-        ${cands.length?`<div class="note" style="margin:4px 0">${notAllowed?`در دسترس هستند ولی جزو دستیارهای مجاز ${esc(nm(g.d))} نیستند:`:"در دسترس:"}</div><div class="row">${btns}</div>`:`<div class="note">کسی در این زمان آزاد نیست${g.t==="unit"?"":"؛ می‌توانید با دستور بالا از شیفت دیگری کسی را بیاورید"}.</div>`}</div>`);
-    }
-  }
-  if(!rows.length) return "";
-  const withC=rows.filter(r=>r.includes("data-fix")).length;
-  return `<details class="panel" ${withC?"open":""}><summary><strong>جاهای خالی (${fa(rows.length)})</strong>${withC?` <span class="note">${fa(withC)} مورد با یک کلیک پر می‌شود</span>`:""}</summary>${rows.join("")}</details>`;
+  return `<div class="gapitem"><div class="gaphd">⚠ ${esc(what)}</div>
+    ${cands.length?`<div class="note" style="margin:2px 0 4px">${notAllowed?`در دسترس هستند ولی جزو دستیارهای مجاز ${esc(nm(g.d))} نیستند:`:"در دسترس:"}</div><div class="row">${btns}</div>`:`<div class="note">کسی در این زمان آزاد نیست${g.t==="unit"?"":"؛ می‌توانید با دستور بالا از شیفت دیگری کسی را بیاورید"}.</div>`}</div>`;
+}
+function gapsHtmlFor(key){ return slotGaps(sched,key).map(g=>gapItemHtml(key,g)).join(""); }
+/* یک خط خلاصه بالای تخته */
+function gapsSummary(){
+  if(!sched) return "";
+  let n=0,fix=0;
+  for(const [k] of DAYS) for(const [sk] of SHIFTS){ const key=k+"_"+sk; for(const g of slotGaps(sched,key)){ n++; if(gapCands(key,g).length) fix++ } }
+  if(!n) return "";
+  return `<p class="note" style="margin:6px 0"><strong>جاهای خالی: ${fa(n)} مورد</strong>${fix?` — ${fa(fix)} مورد با یک کلیک پر می‌شود`:""}. هر کدام زیر شیفت همان روز است.</p>`;
 }
 async function quickFix(t,key,a,b,always){
   const S=structuredClone(sched), sl=S.slots[key], L=keyLabel(key), notices=[]; let item="";
