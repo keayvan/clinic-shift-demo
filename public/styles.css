@@ -250,3 +250,10 @@ hr{border:0;border-top:1px solid var(--line);margin:16px 0}
 .psec.fixed .psectitle{font-weight:800;padding:12px 14px;border-bottom:1px solid var(--line);color:var(--accent)}
 .pfsec.psec{padding-bottom:10px}.pfsec.psec>:not(summary){margin-inline:14px}
 .staffbtn{display:flex;justify-content:space-between;align-items:center;width:100%;padding:12px 14px;margin:6px 0;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;font:inherit;cursor:pointer;text-align:start}.staffbtn:hover{background:var(--bg)}
+.alitem{border-top:1px solid var(--warn);margin:0}
+.alitem:first-of-type{border-top:0}
+.alitem>summary{cursor:pointer;padding:9px 2px;display:flex;justify-content:space-between;align-items:center;gap:8px;list-style:none}
+.alitem>summary::-webkit-details-marker{display:none}
+.alitem>summary::after{content:"‹";color:var(--warn);flex:none}
+.alitem[open]>summary::after{transform:rotate(-90deg)}
+.alitem .albody{padding:2px 2px 10px}

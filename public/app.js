@@ -323,9 +323,10 @@ function staffPages(id){
 /* هشدارهای مهم: کادر قرمز بالای صفحهٔ اصلی و بالای هر برگهٔ پورتال */
 function staffAlerts(id){
   const a=avail[id], p=staffParse[id], items=[];
-  if(sched&&availUrgent()&&staffPage!=="avail"&&!(availSent(a)&&!p)) items.push(`<div class="panel"><strong>حضور هفته بعد را هنوز نفرستاده‌ای.</strong> <button class="btn quiet" data-page="avail">ثبت حضور</button></div>`);
+  if(sched&&availUrgent()&&staffPage!=="avail"&&!(availSent(a)&&!p)) items.push(alertItem("avail","<strong>حضور هفته بعد را هنوز نفرستاده‌ای</strong>",`<p style="margin:0 0 8px">تا پنجشنبه ساعت ۶ عصر وقت داری؛ بعد از آن حضور فعلی‌ات خودکار برای مدیر ارسال می‌شود.</p><button class="btn primary" data-page="avail">ثبت حضور</button>`));
   const body=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+items.join("");
-  return body?`<div class="alertbox" role="alert"><div class="alerthead">⚠ مهم</div>${body}</div>`:"";
+  const n=(body.match(/class="alitem/g)||[]).length;
+  return body?`<div class="alertbox" role="alert"><div class="alerthead">⚠ مهم${n>1?` (${fa(n)})`:""}</div>${body}</div>`:"";
 }
 /* شیفت‌های من و بیماران امروز، مستقیم روی صفحهٔ اصلی */
 function myShiftsHome(id){
@@ -1391,23 +1392,28 @@ function doPrint(){ $("#printArea").innerHTML=pdfHtml(); try{window.print()}catc
 
 /* ---------- notices for staff ---------- */
 function seenAt(id){try{return +localStorage.getItem("seen_"+id)||0}catch(e){return 0}}
+/* هشدارهای کوتاه: یک خط خلاصه، با کلیک توضیح کامل و دکمه‌ها باز می‌شود */
+let alertOpen={};
+function alertItem(key,summary,body,cls){
+  return `<details class="alitem ${cls||""}" data-al="${esc(key)}" ${alertOpen[key]?"open":""}><summary><span>${summary}</span></summary><div class="albody">${body}</div></details>`;
+}
 function noticesPanel(id){
   if(!sched) return "";
   const list=(sched.notices||[]).filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id));
   if(!list.length) return "";
-  return `<div class="panel newbox"><strong>تازه‌ها</strong><ul class="clean issues">${list.slice(-8).reverse().map(n=>`<li>${esc(n.text)} <span class="note">${new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span></li>`).join("")}</ul><p class="row" style="margin-top:8px"><button class="btn quiet" data-act="seen">دیدم</button></p></div>`;
+  const last=list[list.length-1], short=last.text.length>46?last.text.slice(0,46)+"…":last.text;
+  return alertItem("notices","📢 "+esc(short)+(list.length>1?` <span class="note">(+${fa(list.length-1)} مورد)</span>`:""),
+    `<ul class="clean issues">${list.slice(-8).reverse().map(n=>`<li>${esc(n.text)} <span class="note">${new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span></li>`).join("")}</ul><p class="row" style="margin-top:8px"><button class="btn quiet" data-act="seen">دیدم</button></p>`);
 }
 function confirmPanel(id){
   const list=(sched?.confirms||[]).filter(c=>(c.to||[]).includes(id)&&!c.responses?.[id]);
-  if(!list.length) return "";
-  return `<div class="panel confirmbox"><strong>نیاز به تأیید تو</strong>`+list.map(c=>{
+  return list.map(c=>{
     const L=keyLabel(c.key), asDoc=c.doctor===id;
     const what=asDoc?`روی یونیت ${fa(c.unit)}`:`به‌عنوان دستیار ${esc(nm(c.doctor))}`;
-    return `<div style="border-top:1px solid var(--line);padding:8px 0">
-      <p class="warntext">${L}: مدیر شما را ${what} گذاشت، ولی حضور این زمان را اعلام نکرده بودی. می‌آیی؟</p>
-      <div class="row"><button class="btn primary" data-conf="1|${c.id}">می‌آیم</button><button class="btn danger" data-conf="0|${c.id}">نمی‌آیم</button></div>
-    </div>`;
-  }).join("")+`</div>`;
+    return alertItem("conf-"+c.id,`<strong>${L}:</strong> تأیید حضور ${asDoc?`(یونیت ${fa(c.unit)})`:`(با ${esc(nm(c.doctor))})`}`,
+      `<p class="warntext">مدیر شما را ${what} گذاشت، ولی حضور این زمان را اعلام نکرده بودی. می‌آیی؟</p>
+      <div class="row"><button class="btn primary" data-conf="1|${c.id}">می‌آیم</button><button class="btn danger" data-conf="0|${c.id}">نمی‌آیم</button></div>`);
+  }).join("");
 }
 async function respondConfirm(cid,yes){
   const S=structuredClone(sched); const c=(S.confirms||[]).find(x=>x.id===cid); if(!c) return;
@@ -1907,26 +1913,30 @@ async function rejectRequest(rid){
 function coverPanel(id){
   if(!sched) return "";
   const list=Object.values(reqs).filter(r=>liveReq(r)&&eligible(r,id));
-  if(!list.length) return "";
-  return `<div class="panel newbox"><strong>درخواست حضور</strong>`+list.map(r=>{
+  return list.map(r=>{
     const mine=resps[r.id+"__"+id];
-    return `<div style="border-top:1px solid var(--line);padding:8px 0"><div><strong>${esc(keyLabel(r.key))}:</strong> ${esc(coverWhat(r))}</div><div class="note">${r.kind==="gap"?"دستیار ندارد":"جای "+esc(nm(r.who))}${r.askedOnCall?"؛ تو در این شیفت آنکال هستی":""}${r.doctor&&docPref(r)===id?`؛ <strong>${esc(nm(r.doctor))} تو را ترجیح داده</strong>`:""}</div>
+    return alertItem("cv-"+r.id,`<strong>${esc(keyLabel(r.key))}:</strong> درخواست حضور (${esc(coverWhat(r))})${mine?` <span class="note">${mine.can?"✓ اعلام کردی":"ثبت شد"}</span>`:""}`,
+      `<div><strong>${esc(keyLabel(r.key))}:</strong> ${esc(coverWhat(r))}</div><div class="note">${r.kind==="gap"?"دستیار ندارد":"جای "+esc(nm(r.who))}${r.askedOnCall?"؛ تو در این شیفت آنکال هستی":""}${r.doctor&&docPref(r)===id?`؛ <strong>${esc(nm(r.doctor))} تو را ترجیح داده</strong>`:""}</div>
       <div class="row" style="margin-top:6px"><button class="btn ${mine?.can===true?"primary":""}" data-cv="1|${r.id}">هستم</button><button class="btn ${mine?.can===false?"primary":"quiet"}" data-cv="0|${r.id}">نیستم</button>
-      ${mine?`<span class="note">${mine.can?"اعلام آمادگی کردی؛ منتظر تصمیم مدیر.":"ثبت شد."}</span>`:""}</div></div>`}).join("")+`</div>`;
+      ${mine?`<span class="note">${mine.can?"اعلام آمادگی کردی؛ منتظر تصمیم مدیر.":"ثبت شد."}</span>`:""}</div>`);
+  }).join("");
 }
 function doctorSubPanel(id){
   if(byId(id)?.role!=="doctor") return "";
   const list=Object.values(reqs).filter(r=>liveReq(r)&&r.doctor===id);
   const gaps=[]; if(sched) for(const [k,dn] of DAYS) for(const [sk,sn] of SHIFTS){const key=k+"_"+sk, p=sched.slots[key]?.pairs.find(p=>p.d===id); if(p&&!p.a&&!list.some(r=>r.key===key)) gaps.push({key,u:p.u,oc:onCallFor(key,id)})}
-  if(!list.length&&!gaps.length) return "";
-  const gapHtml=gaps.map(g=>`<div style="border-top:1px solid var(--line);padding:8px 0"><div><strong>${esc(keyLabel(g.key))}:</strong> دستیار ندارید (یونیت ${fa(g.u)}).</div>${g.oc.length?`<div class="note" style="margin:4px 0">آنکال‌های این شیفت: ${g.oc.map(x=>esc(nm(x))+((cfg.pairings?.[id]||[]).includes(x)?"":" (غیرهمیشگی)")).join("، ")}</div><button class="btn primary" data-gask="${g.key}|${id}">از آنکال‌ها بپرس</button>`:`<div class="note">در این شیفت آنکالی نیست؛ مدیر در جریان است.</div>`}</div>`).join("");
+  const gapHtml=gaps.map(g=>alertItem("gap-"+g.key,`<strong>${esc(keyLabel(g.key))}:</strong> دستیار نداری (یونیت ${fa(g.u)})`,
+    `<p style="margin:0 0 6px">در این شیفت (یونیت ${fa(g.u)}) برایت دستیاری گذاشته نشده است.</p>${g.oc.length?`<div class="note" style="margin:4px 0">آنکال‌های این شیفت: ${g.oc.map(x=>esc(nm(x))+((cfg.pairings?.[id]||[]).includes(x)?"":" (غیرهمیشگی)")).join("، ")}</div><button class="btn primary" data-gask="${g.key}|${id}">از آنکال‌ها بپرس</button>`:`<div class="note">در این شیفت آنکالی نیست؛ مدیر در جریان است.</div>`}`)).join("");
   const lab={yes:["✓ هست","var(--ok)"],no:["✗ نیست","var(--warn)"],wait:["… منتظر جواب","var(--muted)"]};
-  return `<div class="panel newbox"><strong>دستیار جایگزین</strong>`+gapHtml+list.map(r=>{
+  return gapHtml+list.map(r=>{
     const sts=askStatus(r), pf=docPref(r), set=!!dprefs[r.id];
-    return `<div style="border-top:1px solid var(--line);padding:8px 0"><div><strong>${esc(keyLabel(r.key))}:</strong> ${r.kind==="gap"?"دستیار ندارید.":esc(nm(r.who))+" نمی‌تواند بیاید."}</div>
+    const yes=sts.filter(x=>x.st==="yes").length;
+    return alertItem("sub-"+r.id,`<strong>${esc(keyLabel(r.key))}:</strong> ${r.kind==="gap"?"دستیار نداری":esc(nm(r.who))+" نمی‌آید"}${yes?` <span class="note">(${fa(yes)} نفر آماده)</span>`:""}`,
+      `<div>${r.kind==="gap"?"دستیار ندارید.":esc(nm(r.who))+" نمی‌تواند بیاید."}</div>
       <div class="note" style="margin:4px 0">${sts.length?"آزادند و از آن‌ها پرسیده شد؛ هر کدام را ترجیح می‌دهید انتخاب کنید. تصمیم نهایی با مدیر است.":"فعلاً دستیار آزادی نیست؛ مدیر در جریان است."}</div>
       ${sts.map(x=>`<div class="row" style="margin:4px 0"><span class="chip assistant">${esc(nm(x.id))}</span><span style="color:${lab[x.st][1]}">${lab[x.st][0]}</span>${(cfg.pairings?.[id]||[]).includes(x.id)?"":`<span class="note">(جزو دستیارهای همیشگی شما نیست)</span>`}${x.st!=="no"?`<button class="btn ${pf===x.id?"primary":"quiet"}" data-dp="${r.id}|${x.id}">${pf===x.id?"★ ترجیح من":"ترجیح من"}</button>`:""}</div>`).join("")}
-      ${sts.length?`<p class="row" style="margin-top:6px"><button class="btn ${set&&!pf?"primary":"quiet"}" data-dp="${r.id}|">فرقی نمی‌کند</button></p>`:""}</div>`}).join("")+`</div>`;
+      ${sts.length?`<p class="row" style="margin-top:6px"><button class="btn ${set&&!pf?"primary":"quiet"}" data-dp="${r.id}|">فرقی نمی‌کند</button></p>`:""}`);
+  }).join("");
 }
 function myRequestsPanel(id){
   const list=Object.values(reqs).filter(r=>r.who===id).sort((a,b)=>b.at-a.at).slice(0,5);
@@ -2670,6 +2680,7 @@ function bind(){
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
+  document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open});
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
   document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
