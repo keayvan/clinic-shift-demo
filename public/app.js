@@ -328,8 +328,8 @@ function staffAlerts(id){
   const a=avail[id], p=staffParse[id], items=[];
   if(sched&&availUrgent()&&staffPage!=="avail"&&!(availSent(a)&&!p)) items.push(alertItem("avail","<strong>حضور هفته بعد را هنوز نفرستاده‌ای</strong>",`<p style="margin:0 0 8px">تا پنجشنبه ساعت ۶ عصر وقت داری؛ بعد از آن حضور فعلی‌ات خودکار برای مدیر ارسال می‌شود.</p><button class="btn primary" data-page="avail">ثبت حضور</button>`));
   const body=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+items.join("");
-  const n=(body.match(/class="alitem/g)||[]).length;
-  return body?`<div class="alertbox" role="alert"><div class="alerthead">⚠ مهم${n>1?` (${fa(n)})`:""}</div>${body}</div>`:"";
+  const n=(body.match(/class="alitem/g)||[]).length, ng=(body.match(/class="alitem ok/g)||[]).length, good=n>0&&ng===n;
+  return body?`<div class="alertbox ${good?"good":""}" role="alert"><div class="alerthead">${good?"✓ خبر خوب":"⚠ مهم"}${n>1?` (${fa(n)})`:""}</div>${body}</div>`:"";
 }
 /* شیفت‌های من و بیماران امروز، مستقیم روی صفحهٔ اصلی */
 function myShiftsHome(id){
@@ -2017,10 +2017,21 @@ async function rejectRequest(rid){
 }
 
 /* staff side */
+/* وقتی مدیر «هستم» تو را تأیید کرد: یک اعلان سبز؛ بعد از اولین بازکردنش دیگر نمی‌آید (و شیفت در برنامه‌ات هست) */
+let greenShown=new Set();
+function coverApprovedItems(id){
+  const seen=seenIds(id);
+  return Object.values(reqs).filter(r=>r.status==="approved"&&r.replacement===id&&(!seen.has("ok-"+r.id)||greenShown.has(r.id))).map(r=>{
+    greenShown.add(r.id);
+    return alertItem("ok-"+r.id,`<strong>${esc(keyLabel(r.key))}:</strong> تأیید شد ✓`,
+      `<p style="margin:0 0 4px">مدیر حضورت را تأیید کرد (${esc(coverWhat(r))}).</p><p class="note" style="margin:0">این شیفت به برنامهٔ هفتگی‌ات اضافه شد؛ در «برنامهٔ هفتگی» و «شیفت‌های من» می‌بینی‌اش. بعد از این‌که این پیام را ببینی دیگر نمی‌آید.</p>`,"ok");
+  }).join("");
+}
 function coverPanel(id){
   if(!sched) return "";
   const list=Object.values(reqs).filter(r=>liveReq(r)&&eligible(r,id));
-  return list.map(r=>{
+  const good=coverApprovedItems(id);
+  return good+list.map(r=>{
     const mine=resps[r.id+"__"+id];
     return alertItem("cv-"+r.id,`<strong>${esc(keyLabel(r.key))}:</strong> درخواست حضور (${esc(coverWhat(r))})${mine?` <span class="note">${mine.can?"✓ اعلام کردی":"ثبت شد"}</span>`:""}`,
       `<div><strong>${esc(keyLabel(r.key))}:</strong> ${esc(coverWhat(r))}</div><div class="note">${r.kind==="gap"?"دستیار ندارد":"جای "+esc(nm(r.who))}${r.askedOnCall?"؛ تو در این شیفت آنکال هستی":""}${r.doctor&&docPref(r)===id?`؛ <strong>${esc(nm(r.doctor))} تو را ترجیح داده</strong>`:""}</div>
@@ -2792,7 +2803,7 @@ function bind(){
     const m=document.querySelector("#selfMsg"); if(m) m.textContent=ok?"ذخیره شد.":"ذخیره نشد.";
   });
   document.querySelectorAll("[data-seen-one]").forEach(b=>b.onclick=()=>{markSeen(who,b.dataset.seenOne);render()});
-  document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open});
+  document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open; if(d.open&&d.dataset.al.startsWith("ok-")) markSeen(who,d.dataset.al)});
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
   document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
   document.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
@@ -2826,7 +2837,7 @@ function bind(){
     if(ruleErr){staffMsg=`${name} حذف نشد: ${ruleErr}`;staffMsgBad=true;ruleErr=""} else {staffMsg=`${name} به‌طور کامل از سیستم حذف شد.`+(ruleAfter.includes("تداخل")?" برنامه این هفته اثر گرفته؛ تب «برنامه» را ببینید.":"");staffMsgBad=false}
     render();
   });
-  document.querySelectorAll("[data-cv]").forEach(b=>b.onclick=async()=>{const [c,rid]=b.dataset.cv.split("|");b.disabled=true;await db.doc("responses/"+rid+"__"+who).set({reqId:rid,staff:who,can:c==="1",at:Date.now()})});
+  document.querySelectorAll("[data-cv]").forEach(b=>b.onclick=async()=>{const [c,rid]=b.dataset.cv.split("|");b.disabled=true;alertOpen["cv-"+rid]=false;await db.doc("responses/"+rid+"__"+who).set({reqId:rid,staff:who,can:c==="1",at:Date.now()})});
   document.querySelectorAll("[data-dp]").forEach(b=>b.onclick=async()=>{const [rid,pick]=b.dataset.dp.split("|");b.disabled=true;await db.doc("docpref/"+rid).set({reqId:rid,doctor:who,pick:pick||null,at:Date.now()})});
   document.querySelectorAll("[id^=rsn-]").forEach(i=>i.oninput=e=>rsnDraft[i.id.slice(4)]=e.target.value);
   document.querySelectorAll("[data-rq]").forEach(b=>b.onclick=async()=>{const [t,rid,v]=b.dataset.rq.split("|");b.disabled=true;if(t==="ok")await approveRequest(rid,v||null);else await rejectRequest(rid);render()});
