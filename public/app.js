@@ -308,6 +308,7 @@ function staffPages(id){
   const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
   add("shifts","برنامهٔ هفتگی",weekCalHtml(id));
+  add("me","مشخصات و ساعت کار من",selfProfileHtml(id));
   const done=availSent(a)&&!p;
   add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done&&availUrgent(),urgent:!done&&availUrgent(),sub:done?"ثبت شد":(availUrgent()?"هنوز نفرستادی":"")});
   add("patients","بیماران من",patientsPanel(id,"list"));
@@ -355,8 +356,9 @@ function todayPatientsPanel(id){
 function staffView(id){
   const me=byId(id);
   let h=`<h2>سلام ${esc(me.name)}</h2>`;
-  if(me.role==="insurance") return h+insuranceTab();
-  if(me.role==="lab") return h+LAB.portal(id);
+  const meBtn=`<p class="row" style="margin:6px 0 10px"><button class="btn" data-page="me">مشخصات و ساعت کار من</button></p>`;
+  if(me.role==="insurance") return h+meBtn+insuranceTab();
+  if(me.role==="lab") return h+meBtn+LAB.portal(id);
   h+=staffAlerts(id)+myShiftsHome(id)+todayPatientsPanel(id);
   h+=`<div class="tiles">`+staffPages(id).map(pg=>`<button class="tile ${pg.attn?"attn":""} ${pg.urgent?"urgent":""}" data-page="${pg.key}">${pg.badge?`<span class="bd">${fa(pg.badge)}</span>`:""}${esc(pg.title)}${pg.sub?`<small>${pg.sub}</small>`:""}</button>`).join("")+`</div>`;
   return h;
@@ -373,7 +375,15 @@ function syncStaffPage(){
   if(who==="manager"||staffPageWho!==who){ Shell.close(); return; }
   const pg=staffPages(who).find(x=>x.key===staffPage);
   if(!pg){ Shell.close(); return; }
+  /* چیزی که کاربر همین الان در فیلدها نوشته با به‌روزرسانی پس‌زمینه از بین نرود */
+  const saved={};
+  document.querySelectorAll("#pageBody input[id],#pageBody textarea[id],#pageBody select[id]").forEach(el=>{
+    if(el.type==="checkbox"||el.type==="radio"||el.type==="file") return;
+    const mod=el.tagName==="SELECT"?el.selectedIndex!==Math.max(0,[...el.options].findIndex(o=>o.defaultSelected)):el.value!==el.defaultValue;
+    if(mod) saved[el.id]=el.value;
+  });
   if(!Shell.refresh(staffAlerts(who)+pg.html)) staffPage=null;
+  for(const k in saved){ const el=document.getElementById(k); if(el) el.value=saved[k] }
 }
 
 async function staffParseRun(){
@@ -1011,7 +1021,8 @@ function staffDemoPanel(){
   const n=r=>ofRole(r).length;
   return `<div class="panel"><strong>داده آزمایشی: کارکنان</strong><p class="note" style="margin:2px 0 6px">تعداد افراد جدید از هر نقش را بنویس (پیش‌فرض: ترکیب اولیهٔ کلینیک). نام و حضور تصادفی ساخته می‌شود؛ دستیارها به یکی از دکترها وصل می‌شوند.</p>
     <div class="row" style="flex-wrap:wrap;gap:10px">${demoNumRow("sd","دکتر",n("doctor"))}${demoNumRow("sa","دستیار",n("assistant"))}${demoNumRow("sr","منشی",n("reception"))}${demoNumRow("si","مسئول بیمه",n("insurance"))}${demoNumRow("sl","لابراتوار",n("lab"))}</div>
-    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
+    <p class="row" style="margin-top:8px"><button class="btn" data-act="staff-demo">افزودن کارکنان آزمایشی</button><button class="btn quiet" data-act="staff-demo-clear">پاک کردن کارکنان آزمایشی</button></p>
+    <p class="row" style="margin-top:6px"><button class="btn quiet" data-act="staff-demo-fill">تکمیل اطلاعات آزمایشی همهٔ کارکنان موجود</button>${staffMsg?`<span class="${staffMsgBad?"warn":"okline"}">${esc(staffMsg)}</span>`:""}</p></div>`;
 }
 async function staffDemoRun(){
   const want={doctor:+demoCount("sd")||0,assistant:+demoCount("sa")||0,reception:+demoCount("sr")||0,insurance:+demoCount("si")||0,lab:+demoCount("sl")||0};
@@ -1020,7 +1031,7 @@ async function staffDemoRun(){
   const c=structuredClone(cfg), before=new Set(c.staff.map(x=>x.id)), actions=[];
   for(const [role,k] of Object.entries(want)) for(let i=0;i<Math.min(60,Math.max(0,k));i++) actions.push({op:"add_staff",role,name:demoName(role),...(role==="doctor"?{specialty:pick(SPECS)}:{})});
   const next=applyRuleActions(c,actions);
-  const fresh=next.staff.filter(x=>!before.has(x.id)); fresh.forEach(x=>x.demo=true);
+  const fresh=next.staff.filter(x=>!before.has(x.id)); fresh.forEach(x=>{x.demo=true; Object.assign(x,staffDemoInfo(x))});
   const docs=next.staff.filter(x=>x.role==="doctor");
   for(const a of fresh.filter(x=>x.role==="assistant")){ const d=pick(docs); if(d){ next.pairings[d.id]=[...new Set([...(next.pairings[d.id]||[]),a.id])] } }
   await db.doc("clinic/config").set(next);
@@ -1169,6 +1180,79 @@ function staffTab(){
   }
   return h;
 }
+/* ---------- مشخصات و گزارش ساعت کارمند ---------- */
+const CONTRACTS=["تمام‌وقت","نیمه‌وقت","ساعتی","درصدی","قراردادی","طرحی"];
+/* who: m = فقط مدیر ویرایش می‌کند، s = خود فرد هم می‌تواند (اطلاعات تماس و شخصی) */
+const STAFF_FIELDS=[
+  ["fatherName","نام پدر","text","m"],["nationalId","کد ملی","text","m",'maxlength="10" inputmode="numeric"'],["birthYear","سال تولد","text","s",'maxlength="4" inputmode="numeric"'],
+  ["contractType","نوع قرارداد","select","m"],["startDate","تاریخ شروع به کار","text","m",'placeholder="۱۴۰۴/۰۳/۱۵"'],["licenseNo","شمارهٔ نظام پزشکی","text","m","","doctor"],
+  ["phone","تلفن همراه","tel","s"],["phoneEmerg","تلفن اضطراری","tel","s"],["education","تحصیلات","text","s"],["sheba","شمارهٔ شبا","text","s",'placeholder="IR…" dir="ltr"'],
+  ["address","نشانی","area","s"]
+];
+function staffFormHtml(s,mode){
+  const all=mode==="manager", fields=STAFF_FIELDS.filter(f=>!f[5]||f[5]===s.role);
+  const cell=f=>{
+    const [k,lab,type,who,attr]=f, can=all||who==="s", v=s[k]??"", id="sf-"+k;
+    if(!can) return `<div style="flex:1 1 140px"><span class="note" style="display:block">${lab}</span><div class="ro">${v?esc(String(v)):"—"}</div></div>`;
+    if(type==="select") return `<div style="flex:1 1 140px"><label class="note" for="${id}" style="display:block">${lab}</label><select id="${id}" style="width:100%"><option value=""></option>${CONTRACTS.map(x=>`<option ${v===x?"selected":""}>${x}</option>`).join("")}</select></div>`;
+    if(type==="area") return `<div style="flex:1 1 100%"><label class="note" for="${id}" style="display:block">${lab}</label><textarea id="${id}" style="min-height:44px">${esc(v)}</textarea></div>`;
+    return `<div style="flex:1 1 140px"><label class="note" for="${id}" style="display:block">${lab}</label><input type="${type}" id="${id}" value="${esc(String(v))}" ${attr||""} style="width:100%;box-sizing:border-box"></div>`;
+  };
+  return `<div class="row" style="flex-wrap:wrap;gap:10px;margin-top:6px">${all?`<div style="flex:2 1 160px"><label class="note" for="sf-name" style="display:block">نام</label><input type="text" id="sf-name" value="${esc(s.name)}" style="width:100%;box-sizing:border-box"></div>${s.role==="doctor"?`<div style="flex:1 1 140px"><label class="note" for="sf-specialty" style="display:block">تخصص</label><select id="sf-specialty" style="width:100%">${SPECS.map(x=>`<option ${s.specialty===x?"selected":""}>${x}</option>`).join("")}</select></div>`:""}`:""}${fields.map(cell).join("")}</div>
+    ${all?`<label class="note" for="sf-note" style="display:block;margin-top:8px">یادداشت</label><textarea id="sf-note" style="min-height:44px">${esc(s.note||"")}</textarea>`:""}`;
+}
+function readStaffForm(root,mode){
+  const out={}, all=mode==="manager", g=id=>root.querySelector("#"+id);
+  for(const f of STAFF_FIELDS){ if(!(all||f[3]==="s")) continue; const el=g("sf-"+f[0]); if(el) out[f[0]]=(el.value||"").trim().slice(0,200) }
+  if(all){ const n=g("sf-name"); if(n&&n.value.trim()) out.name=n.value.trim().slice(0,40); const sp=g("sf-specialty"); if(sp) out.specialty=sp.value; const nt=g("sf-note"); if(nt) out.note=nt.value.trim().slice(0,300) }
+  return out;
+}
+async function staffSave(id,patch){
+  const next=structuredClone(cfg), t=next.staff.find(x=>x.id===id); if(!t) return false;
+  Object.assign(t,patch); await db.doc("clinic/config").set(next); cfg=next; return true;
+}
+function barsHtml(items){
+  const max=Math.max(1,...items.map(i=>i.v));
+  return `<div class="bars">${items.map(i=>`<div class="bar ${i.hl?"hl":""}"><span class="bv">${fa(i.v)}</span><i style="height:${Math.max(2,Math.round(i.v/max*88))}px"></i><span class="bl">${i.l}</span></div>`).join("")}</div>`;
+}
+/* گزارش نمودار ساعت کار: روزهای همین هفته + مجموع هفته‌های اخیر */
+function hoursChartHtml(id){
+  const jd=ts=>{const d=new Date(ts),[,m,dd]=gregorianToJalali(d.getFullYear(),d.getMonth()+1,d.getDate());return fa(dd)+" "+PERSIAN_MONTHS[m-1]};
+  const dkey={sat:"شنبه",sun:"یکشنبه",mon:"دوشنبه",tue:"سه‌شنبه",wed:"چهارشنبه",thu:"پنج‌شنبه"}, todayK=DAYKEY[new Date().getDay()];
+  let h=`<div class="panel"><strong>ساعت کار این هفته</strong>`;
+  if(!sched) h+=`<p class="note" style="margin:6px 0 0">برنامهٔ هفته هنوز ساخته نشده.</p></div>`;
+  else{
+    const days=DAYS.map(([k,n])=>{
+      let cnt=0; for(const [sk] of SHIFTS){ const sl=sched.slots?.[k+"_"+sk]; if(!sl) continue;
+        if((sl.pairs||[]).some(p=>p.d===id||p.a===id)||(sl.reception||[]).includes(id)) cnt++; }
+      return {l:n,v:cnt*SHIFT_HOURS,hl:k===todayK};
+    });
+    const tot=days.reduce((a,d)=>a+d.v,0);
+    h+=` <span class="note">جمع: ${fa(tot)} ساعت</span>${barsHtml(days)}<p class="note" style="margin:6px 0 0">هر شیفت ${fa(SHIFT_HOURS)} ساعت حساب شده (ساعت دقیق در اپ ثبت نمی‌شود).</p></div>`;
+  }
+  const weeks=Object.values(archive||{}).filter(w=>w.counts&&id in w.counts).sort((a,b)=>a.at-b.at).slice(-6).map(w=>({l:jd(w.at),v:(w.counts[id]||0)*SHIFT_HOURS}));
+  if(weeks.length) h+=`<div class="panel"><strong>ساعت کار هفته‌های اخیر</strong>${barsHtml(weeks)}</div>`;
+  return h;
+}
+/* پروندهٔ شخصی که خود فرد در پورتالش می‌بیند */
+function selfProfileHtml(id){
+  const s=byId(id); if(!s) return "";
+  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip">${ROLEN[s.role]}</span></div>${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}
+    <p class="note" style="margin:8px 0 0">موارد خاکستری را فقط مدیر عوض می‌کند. اطلاعات تماس و شخصی را خودت می‌توانی به‌روز کنی.</p>${staffFormHtml(s,"self")}
+    <p class="row" style="margin-top:10px"><button class="btn primary" data-self-save="${id}">ذخیره</button><span id="selfMsg" class="okline"></span></p></div>`+hoursChartHtml(id);
+}
+/* اطلاعات آزمایشی کارمند؛ فقط جاهای خالی را پر می‌کند */
+function staffDemoInfo(s){
+  const pick=a=>a[Math.floor(Math.random()*a.length)], int=(a,b)=>a+Math.floor(Math.random()*(b-a+1)), dg=n=>Array.from({length:n},()=>int(0,9)).join("");
+  const py=PF.persianYear()||1405, o={...s}, set=(k,v)=>{ if(o[k]===undefined||o[k]===null||o[k]==="") o[k]=v };
+  set("fatherName",pick(DEMO_MALE)); set("nationalId",dg(10)); set("birthYear",String(py-int(24,58)));
+  set("contractType",pick(CONTRACTS)); set("startDate",`${py-int(0,8)}/${String(int(1,12)).padStart(2,"0")}/${String(int(1,28)).padStart(2,"0")}`);
+  if(s.role==="doctor") set("licenseNo",String(int(10000,99999)));
+  set("phone","09"+int(10,39)+dg(7)); set("phoneEmerg","09"+int(10,39)+dg(7));
+  set("education",{doctor:"دکترای حرفه‌ای دندانپزشکی",assistant:"کاردانی دستیاری دندانپزشک",reception:"کارشناسی مدیریت",lab:"کاردانی پروتز دندان",insurance:"کارشناسی حسابداری"}[s.role]||"دیپلم");
+  set("sheba","IR"+dg(24)); set("address",pick(["تهران، ","کرج، ","اصفهان، ","شیراز، "])+pick(["خیابان آزادی","بلوار کشاورز","خیابان ولیعصر","میدان انقلاب"])+"، پلاک "+int(1,120));
+  return o;
+}
 /* پروندهٔ هر کارمند: با کلیک روی نامش در تب کارکنان باز می‌شود */
 let profArm=false;
 function staffProfileHtml(id){
@@ -1180,16 +1264,11 @@ function staffProfileHtml(id){
   let h=`<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong style="font-size:1.1rem">${esc(s.name)}</strong><span class="chip ${s.role==="doctor"?"doctor":s.role==="assistant"?"assistant":""}">${ROLEN[s.role]}</span></div>
     ${s.specialty?`<p class="note" style="margin:2px 0 0">${esc(s.specialty)}</p>`:""}${s.demo?'<p class="note" style="margin:2px 0 0">آزمایشی</p>':""}
     ${pairs.length?`<p style="margin:8px 0 0"><span class="note">${s.role==="doctor"?"دستیارها":"دکترهای همکار"}:</span> ${pairs.map(esc).join("، ")}</p>`:""}</div>
-  <div class="panel"><strong>مشخصات (قابل‌ویرایش)</strong>
-    <div class="row" style="flex-wrap:wrap;gap:10px;margin-top:6px">
-      <div style="flex:2 1 160px"><label class="note" for="pfName" style="display:block">نام</label><input type="text" id="pfName" value="${esc(s.name)}" style="width:100%;box-sizing:border-box"></div>
-      <div style="flex:1 1 130px"><label class="note" for="pfPhone" style="display:block">تلفن</label><input type="tel" id="pfPhone" value="${esc(s.phone||"")}" style="width:100%;box-sizing:border-box"></div>
-      ${s.role==="doctor"?`<div style="flex:1 1 140px"><label class="note" for="pfSpec" style="display:block">تخصص</label><select id="pfSpec" style="width:100%">${SPECS.map(x=>`<option ${s.specialty===x?"selected":""}>${x}</option>`).join("")}</select></div>`:""}
-    </div>
-    <label class="note" for="pfNote" style="display:block;margin-top:8px">یادداشت</label><textarea id="pfNote" style="min-height:44px">${esc(s.note||"")}</textarea>
+  <div class="panel"><strong>مشخصات (قابل‌ویرایش)</strong>${staffFormHtml(s,"manager")}
     <p class="row" style="margin-top:8px"><button class="btn primary" data-prof-save="${id}">ذخیره</button></p></div>`;
   h+=`<div class="panel"><strong>شیفت‌های این هفته</strong>${ms==null?'<p class="note" style="margin:6px 0 0">برنامه هنوز ساخته نشده.</p>':ms.length?`<ul class="clean shiftlist">${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:'<p class="note" style="margin:6px 0 0">در برنامه شیفتی ندارد.</p>'}
     ${mt?.shifts?`<p class="note" style="margin:8px 0 0">این ماه: ${fa(mt.shifts)} شیفت، حدود ${fa(mt.shifts*SHIFT_HOURS)} ساعت</p>`:""}</div>`;
+  h+=hoursChartHtml(id);
   if(!["insurance","lab"].includes(s.role)) h+=`<div class="panel"><strong>حضور هفتهٔ بعد</strong> <span class="note">(${sent})</span>${a?.grid?gridHtml(a.grid,false):'<p class="note" style="margin:6px 0 0">هنوز چیزی ثبت نکرده.</p>'}${a?.text?`<p class="note" style="margin:6px 0 0">«${esc(a.text)}»</p>`:""}</div>`;
   if(rules.length) h+=`<div class="panel"><strong>قوانین مربوط (${fa(rules.length)})</strong><ul class="clean issues">${rules.map(r=>`<li>${esc(describe(r))}</li>`).join("")}</ul></div>`;
   if(s.role==="doctor"){
@@ -1204,11 +1283,8 @@ function openStaffProfile(id){
   Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>پروندهٔ کارمند</strong></div><div id="pageBody">${staffProfileHtml(id)}</div>`,root=>{
     root.querySelectorAll("[data-pat]").forEach(b=>b.onclick=()=>openPatientSheet(b.dataset.pat));
     const sv=root.querySelector("[data-prof-save]"); if(sv) sv.onclick=async()=>{
-      const next=structuredClone(cfg), t=next.staff.find(x=>x.id===id); if(!t) return;
-      const name=(root.querySelector("#pfName").value||"").trim(); if(name) t.name=name.slice(0,40);
-      t.phone=(root.querySelector("#pfPhone").value||"").trim().slice(0,20); t.note=(root.querySelector("#pfNote").value||"").trim().slice(0,300);
-      const sp=root.querySelector("#pfSpec"); if(sp) t.specialty=sp.value;
-      await db.doc("clinic/config").set(next); cfg=next; staffMsgBad=false; staffMsg=`مشخصات «${t.name}» ذخیره شد.`; openStaffProfile(id);
+      const patch=readStaffForm(root,"manager"); if(!(await staffSave(id,patch))) return;
+      staffMsgBad=false; staffMsg=`مشخصات «${byId(id).name}» ذخیره شد.`; openStaffProfile(id);
     };
     const rm=root.querySelector("[data-prof-rm]"); if(rm) rm.onclick=async()=>{
       if(!profArm){ profArm=true; rm.textContent="مطمئنی؟ حذف کامل از سیستم"; return }
@@ -2691,6 +2767,10 @@ function bind(){
   const st=$("#staffTxt"); if(st) st.oninput=e=>staffDraft[who]=e.target.value;
   const qt=$("#reqTxt"); if(qt) qt.oninput=e=>reqDraft[who]=e.target.value;
   const mt=$("#mgrTxt"); if(mt) mt.oninput=e=>mgrDraft=e.target.value;
+  document.querySelectorAll("[data-self-save]").forEach(b=>b.onclick=async()=>{
+    const root=document.querySelector("#pageBody")||document, ok=await staffSave(b.dataset.selfSave,readStaffForm(root,"self"));
+    const m=document.querySelector("#selfMsg"); if(m) m.textContent=ok?"ذخیره شد.":"ذخیره نشد.";
+  });
   document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open});
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
   document.querySelectorAll("[data-dn]").forEach(i=>i.oninput=()=>{demoN[i.dataset.dn]=i.value===""?0:Math.max(0,Math.min(60,Math.floor(+i.value||0)))});
@@ -2853,6 +2933,12 @@ async function act(a,btn){
     staffMsgBad=false; staffMsg=`«${name}» به‌عنوان ${ROLEN[role]} اضافه شد.`; return render();
   }
   if(a==="sched-demo"){btn.disabled=true;return schedDemoRun()}
+  if(a==="staff-demo-fill"){
+    btn.disabled=true; const next=structuredClone(cfg); let n=0;
+    next.staff=next.staff.map(s=>{ const q=staffDemoInfo(s); if(JSON.stringify(q)!==JSON.stringify(s)) n++; return q });
+    await db.doc("clinic/config").set(next); cfg=next;
+    staffMsgBad=false; staffMsg=`اطلاعات همهٔ ${fa(next.staff.length)} کارمند کامل است (${fa(n)} نفر تغییر کرد؛ فقط جاهای خالی پر شد).`; return render();
+  }
   if(a==="staff-demo-clear"){btn.disabled=true;return staffDemoClear()}
   if(a==="pat-demo-clear"){btn.disabled=true;return patientDemoClear()}
   if(a==="wipe-all"){ if(btn.dataset.sure!=="1"){btn.dataset.sure="1";btn.textContent="مطمئنی؟ همهٔ بیماران، نوبت‌ها، لابراتوار و ایمپلنت‌ها پاک می‌شود. دوباره بزن";return} btn.disabled=true; return wipeAll() }
