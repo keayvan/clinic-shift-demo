@@ -130,8 +130,8 @@ async function exportInsXlsx(){
       const [name,cap]=INS[n++%INS.length]; p.insurance={name,number:name?String(100000000+Math.floor(Math.random()*9e8)):null,cap};
       await LDB.doc("patients/"+d.id).set(p); } }
   if(!LDB.hasAny("implants")){ cfg=(await LDB.doc("clinic/config").get()).data(); await IMP.seed(); }
-  db.doc("clinic/config").onSnapshot(sn=>{cfg=sn.exists?sn.data():null;loaded.cfg=true;render()},()=>{});
-  db.collection("avail").onSnapshot(q=>{avail={};q.docs.forEach(x=>avail[x.id]=x.data());loaded.avail=true;render()},()=>{});
+  db.doc("clinic/config").onSnapshot(sn=>{cfg=sn.exists?sn.data():null;loaded.cfg=true;autoAvail();render()},()=>{});
+  db.collection("avail").onSnapshot(q=>{avail={};q.docs.forEach(x=>avail[x.id]=x.data());loaded.avail=true;autoAvail();render()},()=>{});
   db.doc("clinic/schedule").onSnapshot(sn=>{sched=sn.exists?sn.data():null;loaded.sched=true;render()},()=>{});
   db.collection("requests").onSnapshot(q=>{reqs={};q.docs.forEach(x=>reqs[x.id]=x.data());render()},()=>{});
   db.collection("responses").onSnapshot(q=>{resps={};q.docs.forEach(x=>resps[x.id]=x.data());render()},()=>{});
@@ -240,14 +240,67 @@ function staffAvailHtml(id){
       <button class="btn quiet" data-act="staff-back">ویرایش متن</button>
     </p></div>`;
 }
+/* ---------- هفتهٔ هدف و مهلت اعلام حضور: پنجشنبه ساعت ۶ عصر ---------- */
+const isoOf=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+function availTarget(){ const d=new Date(); d.setHours(12,0,0,0); d.setDate(d.getDate()+((6-d.getDay()+7)%7||7)); return d; }
+function availWeek(){ return isoOf(availTarget()); }
+function availDeadline(){ const d=availTarget(); d.setDate(d.getDate()-2); d.setHours(18,0,0,0); return d; }
+function availSent(a){ return !!a?.confirmed&&a.week===availWeek(); }
+/* بعد از مهلت، حضور فعلی افرادی که چیزی نفرستاده‌اند خودکار برای مدیر ثبت می‌شود */
+function autoAvail(){
+  if(!loaded.avail||!cfg||Date.now()<availDeadline().getTime()) return;
+  const wk=availWeek(), dl=availDeadline().getTime();
+  for(const s of cfg.staff||[]){
+    if(s.role==="insurance"||s.role==="lab") continue;
+    const a=avail[s.id]; if(!a?.grid||a.week===wk&&a.confirmed) continue;
+    if(!a.confirmed&&a.editingAt>dl) continue;
+    avail[s.id]={...a,confirmed:true,week:wk,auto:true,updatedAt:Date.now()};
+    db.doc("avail/"+s.id).set(avail[s.id]).catch(()=>{});
+  }
+}
+/* تقویم هفتگی: شیفت من، منشی هر شیفت و تعداد بیماران هر روز */
+let calWeek=0;
+function apptDocsFor(id){
+  const r=byId(id)?.role;
+  if(r==="doctor") return [id];
+  if(r==="assistant") return ofRole("doctor").filter(d=>(cfg.pairings?.[d.id]||[]).includes(id)).map(d=>d.id);
+  return null;
+}
+function weekCalHtml(id){
+  const d0=new Date(); d0.setHours(12,0,0,0);
+  let diff=(d0.getDay()+1)%7; d0.setDate(d0.getDate()+(diff===6?1:-diff)+7*calWeek);
+  const docs=apptDocsFor(id), todayIso=todayISO();
+  const rows=DAYS.map(([k,dn],i)=>{
+    const d=new Date(d0); d.setDate(d.getDate()+i); const iso=isoOf(d), [jy,jm,jd]=gregorianToJalali(d.getFullYear(),d.getMonth()+1,d.getDate());
+    const cells=SHIFTS.map(([sk])=>{
+      const sl=sched?.slots?.[k+"_"+sk]; if(!sl) return `<td class="note">—</td>`;
+      const parts=[];
+      for(const p of sl.pairs||[]){
+        if(p.d===id) parts.push(`یونیت ${fa(p.u||"")} با ${p.a?esc(nm(p.a)):"بدون دستیار"}`);
+        if(p.a===id) parts.push(`${esc(nm(p.d))}${p.u?"، یونیت "+fa(p.u):""}`);
+      }
+      const rec=(sl.reception||[]).map(nm);
+      if((sl.reception||[]).includes(id)) parts.push("پذیرش");
+      if((sl.free||[]).includes(id)) parts.push("آنکال");
+      return `<td>${parts.length?parts.join("<br>"):'<span class="note">—</span>'}${rec.length?`<div class="note">منشی: ${esc(rec.join("، "))}</div>`:""}</td>`;
+    }).join("");
+    const n=Object.values(appts).filter(a=>a.date===iso&&a.status!=="cancelled"&&(!docs||docs.includes(a.doctor))).length;
+    return `<tr class="${iso===todayIso?"today":""}"><th>${dn}<div class="note">${fa(jd)} ${PERSIAN_MONTHS[jm-1]}</div></th>${cells}<td><strong>${fa(n)}</strong></td></tr>`;
+  }).join("");
+  return `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><strong>برنامهٔ هفتگی ${calWeek?"(هفتهٔ بعد)":"(این هفته)"} ${sched&&!sched.published?'<span class="note">(پیش‌نویس)</span>':""}</strong>
+    <span class="row"><button class="btn ${calWeek?"quiet":"primary"}" data-act="cal-0">این هفته</button><button class="btn ${calWeek?"primary":"quiet"}" data-act="cal-1">هفتهٔ بعد</button></span></div>
+    <div style="overflow-x:auto;margin-top:8px"><table class="av calweek" style="min-width:0"><thead><tr><th>روز</th><th>صبح</th><th>عصر</th><th>بیمار</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+function availNotice(){
+  const dl=availDeadline();
+  return `<p class="warn" style="font-weight:700;margin-bottom:10px">اگر برای هفتهٔ بعد باید شیفت‌هایت عوض شود، تا پنجشنبه ساعت ۶ عصر (${dl.toLocaleDateString("fa-IR",{day:"numeric",month:"long"})}) تغییر بده. در غیر این صورت، حضور فعلی‌ات که پایین می‌بینی خودکار برای مدیر ارسال می‌شود.</p>`;
+}
 function staffPages(id){
   const pages=[], add=(key,title,html,o={})=>{ if(html&&String(html).trim()) pages.push({key,title,html,...o}) };
   const a=avail[id], p=staffParse[id], ms=myShifts(id);
-  add("shifts","برنامه کامل و خروجی",ms?`<div class="panel"><strong>شیفت‌های تو ${sched.published?`(نسخه ${fa(sched.rev||1)})`:`<span class="note">(پیش‌نویس؛ هنوز مدیر تأیید و ارسال نکرده)</span>`}</strong>`+
-      (ms.length?`<ul>${ms.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:`<p class="note">در این برنامه شیفتی برایت نیست.</p>`)+
-      (sched.published?`<p class="note" style="margin:8px 0 4px">برنامه کامل کلینیک:</p><div class="row">${exportBtns()}</div>`:"")+`${exportMsg?`<p class="warn" style="margin-top:8px">${esc(exportMsg)}</p>`:""}</div>`+monthPanel(id):"");
-  const done=!!a?.confirmed&&!p;
-  add("avail","حضور هفته بعد",staffAvailHtml(id)+myRequestsPanel(id),{attn:!done,sub:done?"ثبت شد":"هنوز نفرستادی"});
+  add("shifts","برنامهٔ هفتگی",sched?weekCalHtml(id):"");
+  const done=availSent(a)&&!p;
+  add("avail","حضور هفته بعد",availNotice()+staffAvailHtml(id)+myRequestsPanel(id),{attn:!done,sub:done?"ثبت شد":"هنوز نفرستادی"});
   add("patients","بیماران من",patientsPanel(id,"list"));
   add("newpat","بیمار جدید",patientsPanel(id,"new"));
   add("intake","پذیرش بیمار جدید",patientIntakePanel(id));
@@ -261,7 +314,7 @@ function staffPages(id){
 /* هشدارهای مهم: کادر قرمز بالای صفحهٔ اصلی و بالای هر برگهٔ پورتال */
 function staffAlerts(id){
   const a=avail[id], p=staffParse[id], items=[];
-  if(sched&&staffPage!=="avail"&&!(a?.confirmed&&!p)) items.push(`<div class="panel"><strong>حضور هفته بعد را هنوز نفرستاده‌ای.</strong> <button class="btn quiet" data-page="avail">ثبت حضور</button></div>`);
+  if(sched&&staffPage!=="avail"&&!(availSent(a)&&!p)) items.push(`<div class="panel"><strong>حضور هفته بعد را هنوز نفرستاده‌ای.</strong> <button class="btn quiet" data-page="avail">ثبت حضور</button></div>`);
   const body=noticesPanel(id)+confirmPanel(id)+doctorSubPanel(id)+coverPanel(id)+items.join("");
   return body?`<div class="alertbox" role="alert"><div class="alerthead">⚠ مهم</div>${body}</div>`:"";
 }
@@ -325,7 +378,7 @@ async function staffConfirm(){
   const id=who,p=staffParse[id];
   if(p.orig&&JSON.stringify(p.orig)!==JSON.stringify(p.grid)) FB.correction("availability",p.text,p.orig,p.grid);
   try{
-    await db.doc("avail/"+id).set({staffId:id,text:staffDraft[id]??"",grid:p.grid,summary:p.summary,confirmed:true,updatedAt:Date.now()});
+    await db.doc("avail/"+id).set({staffId:id,text:staffDraft[id]??"",grid:p.grid,summary:p.summary,confirmed:true,week:availWeek(),auto:false,updatedAt:Date.now()});
     delete staffParse[id]; render();
   }catch(e){staffErr="ذخیره نشد. دوباره بزن.";render()}
 }
@@ -531,7 +584,7 @@ async function reqApply(){
   const id=who, pl=reqPlan[id]; if(!pl) return;
   try{
     const a=avail[id];
-    await db.doc("avail/"+id).set({...(a||{staffId:id,text:"",summary:""}),grid:pl.st.grid,confirmed:true,updatedAt:Date.now()});
+    await db.doc("avail/"+id).set({...(a||{staffId:id,text:"",summary:""}),grid:pl.st.grid,confirmed:true,week:availWeek(),auto:false,updatedAt:Date.now()});
     if(JSON.stringify(pl.st.cfg)!==JSON.stringify(cfg)) await db.doc("clinic/config").set(pl.st.cfg);
     if(pl.st.sched){
       const s2=pl.st.sched; s2.log=[...(s2.log||[]),{who:id,at:Date.now(),text:reqDraft[id]||"",items:pl.log}].slice(-40);
@@ -702,7 +755,7 @@ function availTab(){
     h+=`<tr class="rolehead"><td colspan="13">${r==="insurance"?"مسئول بیمه":ROLEN[r]+"ها"}</td></tr>`;
     for(const s of ofRole(r)){
       const a=avail[s.id];
-      h+=`<tr><td>${esc(s.name)}${s.specialty?` <span class="note">(${esc(s.specialty)})</span>`:""}${a?.confirmed?"":' <span class="note">(نفرستاده)</span>'}</td>`+
+      h+=`<tr><td>${esc(s.name)}${s.specialty?` <span class="note">(${esc(s.specialty)})</span>`:""}${a?.confirmed?(a.auto&&a.week===availWeek()?' <span class="note">(خودکار)</span>':""):' <span class="note">(نفرستاده)</span>'}</td>`+
         DAYS.map(([k])=>SHIFTS.map(([sk])=>`<td><span class="dot ${a?.confirmed&&a.grid?.[k]?.[sk]?"on":""}"></span></td>`).join("")).join("")+`</tr>`;
     }
   }
@@ -2336,7 +2389,8 @@ async function act(a,btn){
   if(a==="staff-confirm") return staffConfirm();
   if(a==="staff-back"){delete staffParse[who];return render()}
   if(a==="staff-redo"){staffDraft[who]=avail[who]?.text||"";staffParse[who]=null;delete staffParse[who];
-    await db.doc("avail/"+who).update({confirmed:false});return}
+    await db.doc("avail/"+who).update({confirmed:false,editingAt:Date.now()});return}
+  if(a==="cal-0"||a==="cal-1"){calWeek=+a.slice(4);return render()}
   if(a==="req-parse") return reqParseRun();
   if(a==="req-apply") return reqApply();
   if(a==="req-cancel"){delete reqPlan[who];return render()}
