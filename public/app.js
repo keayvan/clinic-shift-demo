@@ -2393,7 +2393,7 @@ function renderPatientSheet(){
   const p=patients[patDraft.openId]; if(!p) return;
   const isMgr=who==="manager";
   const canEditPlan=byId(who)?.role==="doctor";
-  const exportRow=`<div class="row" style="margin:8px 0"><button class="btn" data-act="pat-pdf">دانلود PDF</button><button class="btn quiet" data-act="pat-print">چاپ</button></div>`;
+  const exportRow=`<div class="row" style="margin:8px 0"><button class="btn" data-act="pat-pdf">دانلود PDF</button><button class="btn quiet" data-act="pat-print">چاپ</button>${(who==="manager"||who===p.doctor)?`<button class="btn" data-pat-refer="1">${(p.refs||[]).length?"تغییر ارجاع":"ارجاع به دکتر دیگر"}</button>`:""}</div>`;
   const showEdit=!isMgr||patDraft.editingInfo;
   const info=showEdit?`${PF.fields("e",p)}
     ${isMgr?"":`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-info-save">ذخیره اطلاعات</button></p>`}`
@@ -2411,8 +2411,7 @@ function renderPatientSheet(){
   const sec=(key,title,inner,forceOpen)=>`<details class="psec" data-sec="${key}" ${forceOpen||patOpen[key]?"open":""}><summary>${title}</summary><div class="psecbody">${inner}</div></details>`;
   const allergyLine=PF.allergyText(p)?`<p class="warn" style="margin:6px 0"><strong>⚠ حساسیت: </strong>${esc(PF.allergyText(p))}</p>`:"";
   /* کارهای انجام‌شده و لازم: همیشه باز و بالای پرونده، قبل از مشخصات */
-  const canRefer=who==="manager"||who===p.doctor;
-  const refLine=`<p class="note" style="margin:0 0 4px">${(p.refs||[]).length?`ارجاع به: <strong>${esc(REF.names(p.refs))}</strong> `:""}${canRefer?`<button class="linkbtn" data-pat-refer="1">${(p.refs||[]).length?"تغییر ارجاع":"ارجاع به دکتر دیگر…"}</button>`:""}${(p.refs||[]).includes(who)?`<span class="chip">به شما ارجاع شده (دکتر اصلی: ${esc(nm(p.doctor))})</span>`:""}</p>`;
+  const refLine=`<p class="note" style="margin:0 0 4px">${(p.refs||[]).length?`ارجاع به: <strong>${esc(REF.names(p.refs))}</strong> `:""}${(p.refs||[]).includes(who)?`<span class="chip">به شما ارجاع شده (دکتر اصلی: ${esc(nm(p.doctor))})</span>`:""}</p>`;
   let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${refLine}${allergyLine}${exportRow}
     <div class="psec fixed"><div class="psectitle">کارهای انجام‌شده و لازم</div><div class="psecbody"><div class="clean">${rows}</div><div style="margin-top:12px">`;
   if(canEditPlan){
