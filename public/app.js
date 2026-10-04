@@ -1565,7 +1565,7 @@ async function respondConfirm(cid,yes){
   const L=keyLabel(c.key);
   if(!yes){
     const roleTxt=who===c.doctor?"دکتر":"دستیار";
-    S.alerts=[...(S.alerts||[]),{id:uid(),at:Date.now(),key:c.key,text:`${L}: ${nm(who)} (${roleTxt}) شیفتی را که بدون اعلام حضورش گذاشته بودید رد کرد.`,resolved:false}].slice(-60);
+    S.alerts=[...(S.alerts||[]),{id:uid(),at:Date.now(),key:c.key,kind:"refused",who,text:`${L}: ${nm(who)} (${roleTxt}) شیفتی را که بدون اعلام حضورش گذاشته بودید رد کرد.`,resolved:false}].slice(-60);
   }
   S.log=[...(S.log||[]),{who,at:Date.now(),text:"",items:[`${L}: ${yes?"شیفت اجباری را پذیرفت.":"شیفت اجباری را رد کرد."}`]}].slice(-40);
   try{await db.doc("clinic/schedule").set(S)}catch(e){}
@@ -1995,9 +1995,9 @@ function requestsPanel(){
 function topAlerts(){
   if(!sched||tab==="schedule") return "";
   const pend=Object.values(reqs).filter(liveReq).length, nc=newConflicts().length;
-  let gaps=0; for(const [k] of DAYS) for(const [sk] of SHIFTS) gaps+=slotGaps(sched,k+"_"+sk).length;
-  if(!pend&&!nc&&!gaps) return "";
-  const parts=[gaps?`${fa(gaps)} جای خالی`:"",pend?`${fa(pend)} درخواست`:"",nc?"برنامه با قوانین جدید نمی‌خواند":""].filter(Boolean).join(" · ");
+  let gaps=0, dec=0; for(const [k] of DAYS) for(const [sk] of SHIFTS){ gaps+=slotGaps(sched,k+"_"+sk).length; dec+=shiftAlerts(k+"_"+sk).length }
+  if(!pend&&!nc&&!gaps&&!dec) return "";
+  const parts=[gaps?`${fa(gaps)} جای خالی`:"",dec?`${fa(dec)} مورد نیازمند تصمیم`:"",pend?`${fa(pend)} درخواست`:"",nc?"برنامه با قوانین جدید نمی‌خواند":""].filter(Boolean).join(" · ");
   return `<div class="panel" style="border:2px solid var(--warn);background:var(--warn-bg)"><div class="row" style="justify-content:space-between;align-items:center"><span><strong style="color:var(--warn)">نیاز به رسیدگی:</strong> ${parts}</span><button class="btn" data-tab="schedule">رسیدگی</button></div></div>`;
 }
 
@@ -2132,10 +2132,14 @@ const GAP_DUP=/خالی|دستیار مجاز و در دسترس|منشی (لا�
 /* حالت ۳: توضیح‌های بی‌اقدام یک شیفت (فقط نمایش، بدون «دیدم») */
 function shiftInfos(key){
   if(!sched) return [];
-  const pre=keyLabel(key)+":", hasGap=slotGaps(sched,key).length>0, out=[];
+  const pre=keyLabel(key)+":", out=[];
   for(const t of sched.issues||[]) if(t.startsWith(pre)&&!GAP_DUP.test(t)) out.push(t.slice(pre.length).trim());
-  if(hasGap) for(const a of sched.alerts||[]) if(!a.resolved&&a.key===key&&!GAP_DUP.test(a.text)) out.push(a.text.startsWith(pre)?a.text.slice(pre.length).trim():a.text);
   return [...new Set(out)];
+}
+/* هشدارِ نیازمند تصمیمِ همین شیفت (مثلاً کسی شیفت اجباری را رد کرد): جای خالی نمی‌سازد پس باید جدا و ماندگار دیده شود تا مدیر «ببندد» */
+function shiftAlerts(key){
+  if(!sched) return [];
+  return (sched.alerts||[]).filter(a=>!a.resolved&&a.key===key&&!GAP_DUP.test(a.text));
 }
 /* موارد عمومی که به هیچ شیفتی وصل نیستند */
 function generalIssues(){
@@ -2163,16 +2167,18 @@ function gapsHtmlFor(key){ return slotGaps(sched,key).map(g=>gapItemHtml(key,g))
 let gapsKey=null;
 function gapsPageHtml(){
   if(!sched||!gapsKey) return "";
-  const gh=gapsHtmlFor(gapsKey), infos=shiftInfos(gapsKey);
+  const gh=gapsHtmlFor(gapsKey), infos=shiftInfos(gapsKey), als=shiftAlerts(gapsKey);
   let h="";
   if(gh) h+=`<div class="panel">${gh}</div>`;
+  if(als.length) h+=`<div class="panel"><strong>نیاز به تصمیم</strong>${als.map(a=>`<div class="gapitem"><div class="gaphd">⚠ ${esc(a.text.startsWith(keyLabel(gapsKey)+":")?a.text.slice(keyLabel(gapsKey).length+1).trim():a.text)}</div><p class="row" style="margin-top:6px">${a.kind==="refused"&&a.who&&byId(a.who)?`<button class="btn quiet" data-prompt="${esc(nm(a.who)+" را از "+keyLabel(gapsKey)+" بردار")}">در جعبهٔ دستور بنویس</button>`:""}<button class="btn quiet" data-close="${a.id}">بستن</button></p></div>`).join("")}</div>`;
   if(infos.length) h+=`<div class="panel"><strong>توضیح</strong><ul class="clean issues" style="margin-top:4px">${infos.map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`;
   return h||`<div class="panel"><p class="okline" style="margin:0">این شیفت جای خالی یا توضیحی ندارد ✓</p></div>`;
 }
 /* پیوند کوچک داخل هر شیفتِ تخته؛ فقط همان روز و صبح/عصر را در یک برگه باز می‌کند */
 function gapLinkHtml(key){
-  const n=slotGaps(sched,key).length, m=shiftInfos(key).length; if(!n&&!m) return "";
-  return `<button class="gaplink ${n?"":"info"}" data-gaps-key="${key}">${n?`⚠ ${fa(n)} جای خالی`:""}${n&&m?" · ":""}${m?`ℹ ${fa(m)} توضیح`:""} <span>‹</span></button>`;
+  const n=slotGaps(sched,key).length, d=shiftAlerts(key).length, m=shiftInfos(key).length; if(!n&&!d&&!m) return "";
+  const parts=[n?`⚠ ${fa(n)} جای خالی`:"",d?`❗ ${fa(d)} نیاز به تصمیم`:"",m?`ℹ ${fa(m)} توضیح`:""].filter(Boolean).join(" · ");
+  return `<button class="gaplink ${n||d?"":"info"}" data-gaps-key="${key}">${parts} <span>‹</span></button>`;
 }
 function openGapsPage(key){
   gapsKey=key;
