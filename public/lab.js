@@ -174,7 +174,7 @@ const LAB = (() => {
       </div></div>`;
   }
   const counts = () => { const c = Object.fromEntries(ORDER.map(s => [s, 0])); list().forEach(o => c[o.status]++); return c; };
-  const chips = () => { const c = counts(); return `<div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">${STATUS.map(([k, l]) => `<span class="chip ${k === "delivered" ? "assistant" : "doctor"}">${l}: ${fa(c[k])}</span>`).join("")}</div>`; };
+  const chips = () => { const c = counts(); return `<p class="note" style="margin:0 0 4px">تعداد کل سفارش‌ها به تفکیک مرحله (از ابتدا تا الان؛ محدود به یک بازهٔ زمانی نیست):</p><div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">${STATUS.map(([k, l]) => `<span class="chip ${k === "delivered" ? "assistant" : "doctor"}">${l}: ${fa(c[k])}</span>`).join("")}</div>`; };
 
   /* همهٔ سفارش‌ها در یک جدول؛ کلیک روی اسم بیمار پروندهٔ او را باز می‌کند */
   function patientIdOf(o) {
@@ -301,6 +301,12 @@ const LAB = (() => {
       const row = e.target.closest("[data-lab-row]");
       if (row && !e.target.closest("button, a, input, select, textarea")) { openOrder(row.dataset.labRow); return; }
       const b = e.target.closest("[data-lab]"); if (!b) return;
+      if (b.dataset.lab === "step" && b.dataset.arm !== "1") {
+        /* تأیید قبل از تغییر وضعیت، تا با کلیک اشتباهی جابه‌جا نشود */
+        const t0 = b.textContent; b.dataset.arm = "1"; b.textContent = "مطمئنی؟ «" + t0 + "»";
+        setTimeout(() => { if (b.isConnected) { b.dataset.arm = ""; b.textContent = t0; } }, 4000);
+        return;
+      }
       b.disabled = true;
       try {
         if (b.dataset.lab === "new") await create(b.dataset.form);

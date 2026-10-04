@@ -239,6 +239,16 @@ const IMP = (() => {
     if (view === "settings") return h + settingsHtml();
     return h + (view === "new" ? newForm() : "") + remindersPanel() + filterBar() + listHtml();
   }
+  /* در پروندهٔ بیمار: پرونده‌های ایمپلنتِ همین بیمار (با patientId یا هم‌نام) */
+  function sheetPanel(p) {
+    const mine = Object.values(cases).filter(c => vis(c) && (c.patientId ? c.patientId === p.id : NLU.norm(c.name) === NLU.norm(p.name)));
+    if (!mine.length) return "";
+    const open = typeof patOpen !== "undefined" && patOpen.implant;
+    return `<details class="psec" data-sec="implant" ${open ? "open" : ""}><summary>ایمپلنت (${fa(mine.length)})</summary><div class="psecbody">${mine.map(c => {
+      const regs = REG.filter(([k]) => (c.regions?.[k]?.status || "none") !== "none").map(([k, n]) => `${n}: ${STN[c.regions[k].status]}`).join("، ");
+      return `<div style="border-top:1px solid var(--line);padding:6px 0"><button class="linkbtn" data-imp-open="${c.id}">${esc(c.name)}</button> <span class="note">— ${esc(nm(c.doctor))}${c.archived ? " · بایگانی" : ""}</span>${regs ? `<div class="note">${esc(regs)}</div>` : ""}</div>`;
+    }).join("")}</div></details>`;
+  }
   function staffPanel(id) {
     const me = byId(id); if (!me) return "";
     if (me.role === "doctor") {
@@ -431,7 +441,8 @@ const IMP = (() => {
         const name = (newDraft.name || "").trim(); if (!name) { err = "اسم بیمار را بنویسید."; return render(); }
         const doctor = $("#impNDoc")?.value || newDraft.doctor, id = "imp" + uid();
         const dup = Object.values(cases).find(c => NLU.norm(c.name) === NLU.norm(name));
-        await save({ id, name, phone: (newDraft.phone || "").trim() || null, doctor, createdBy: who, createdAt: Date.now(), regions: {}, payments: [], installments: [], opg: [] });
+        const pm = Object.values(patients).filter(x => NLU.norm(x.name) === NLU.norm(name));
+        await save({ id, patientId: pm.length === 1 ? pm[0].id : null, name, phone: (newDraft.phone || "").trim() || null, doctor, createdBy: who, createdAt: Date.now(), regions: {}, payments: [], installments: [], opg: [] });
         newDraft = { name: "", phone: "", doctor }; view = "list"; msg = dup ? `ثبت شد. توجه: بیمار دیگری هم با اسم «${esc(name)}» وجود دارد.` : "ثبت شد."; render(); return openCase(id);
       }
     });
@@ -505,5 +516,5 @@ const IMP = (() => {
     LDB.doc("implant/settings").onSnapshot(sn => { settings = sn.exists ? sn.data() : { access: {}, cards: [] }; render(); });
   }
   const badge = () => canMoney(who) ? Object.values(cases).filter(vis).filter(c => !c.archived && fin(c).inst.some(i => i.left > 0 && i.days <= 0)).length : 0;
-  return { start, seed, demo, demoFor, clearDemo, tab, staffPanel, bind, badge, canSee, _t: { parseMoney, commas, words, fin, visFor }, files: { IDB, shrink } };
+  return { start, seed, demo, demoFor, clearDemo, tab, staffPanel, bind, badge, canSee, sheetPanel, open: id => openCase(id), _t: { parseMoney, commas, words, fin, visFor }, files: { IDB, shrink } };
 })();
