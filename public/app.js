@@ -2697,7 +2697,7 @@ function inventoryTab(){
       h+=`<tr><td>${esc(it.name)}${isLow?' <span class="chip missing">کم</span>':""}</td><td>${esc(it.unit)}</td>
         <td><input type="number" min="0" data-qty="${id}" value="${it.qty}" style="width:70px"></td>
         <td><input type="number" min="0" data-min="${id}" value="${it.minQty}" style="width:60px"></td>
-        <td><button class="btn quiet" data-act="inv-save" data-id="${id}">ذخیره</button> <button class="btn ${invOpenId===id?"primary":"quiet"}" data-act="inv-open" data-id="${id}">${invOpenId===id?"بستن گردش":"گردش"}</button></td>
+        <td><button class="btn quiet" data-act="inv-save" data-id="${id}">ذخیره</button> <button class="btn ${invOpenId===id?"primary":"quiet"}" data-act="inv-open" data-id="${id}">گردش</button></td>
         <td><button class="x" data-act="inv-del" data-id="${id}">حذف</button></td></tr>${invOpenId===id?`<tr><td colspan="6" style="text-align:start">${invMoveHtml(id,it)}</td></tr>`:""}`;
     }
     h+=`</tbody></table></div>`;
