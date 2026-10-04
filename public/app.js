@@ -849,8 +849,7 @@ function schedTab(){
     return c+`</div>`;
   }).join("")+`</div></section>`).join("")+`</div>`;
   h+=conflictBanner();
-  h+=alertsListPanel();
-  if(sched.issues?.length) h+=`<div class="panel"><strong>نیاز به توجه</strong><ul class="clean issues">${sched.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`;
+  {const gi=generalIssues(); if(gi.length) h+=`<details class="panel"><summary><strong>موارد عمومی (${fa(gi.length)})</strong> <span class="note">فقط اطلاع</span></summary><ul class="clean issues" style="margin-top:6px">${gi.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></details>`;}
   if(sched.log?.length) h+=`<div class="panel" style="margin-top:16px"><strong>تغییرات بعد از ساخت برنامه</strong><ul class="clean issues">${[...sched.log].reverse().slice(0,15).map(l=>`<li><strong>${l.who==="manager"?"مدیر":esc(nm(l.who))}</strong> <span class="note">${new Date(l.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span><br>${(l.items||[]).map(esc).join("<br>")}</li>`).join("")}</ul></div>`;
   h+=`<p class="note">ساخته شده: ${new Date(sched.generatedAt).toLocaleString("fa-IR")}</p>`;
   return h+`<button class="mgrfab" data-act="mgr-open" aria-label="تغییر برنامه این هفته">✎ تغییر برنامه</button>`;
@@ -1574,11 +1573,6 @@ async function respondConfirm(cid,yes){
 
 /* ---------- manager alerts & weekly edits ---------- */
 let mgrDraft="", mgrPlan=null, mgrBusy=false, mgrErr="";
-/* فهرست هشدارهای حل‌نشده؛ داخل جریان صفحه، بعد از برنامه */
-function alertsListPanel(){
-  const open=(sched.alerts||[]).filter(a=>!a.resolved); if(!open.length) return "";
-  return `<div class="panel"><strong>هشدارها (${fa(open.length)})</strong><p class="note" style="margin:2px 0 6px">سیستم این‌ها را خودش نتوانست حل کند.</p>`+open.map(a=>`<div class="alert"><span>${esc(a.text)}</span><button class="x" data-close="${a.id}">بستن</button></div>`).join("")+`</div>`;
-}
 /* جعبهٔ دستور مدیر: بالای تب برنامه؛ با اسکرول یک دکمهٔ شناور آن را در برگه باز می‌کند */
 function mgrPromptBox(inSheet){
   const sx=inSheet?"S":"";
@@ -1997,19 +1991,14 @@ function requestsPanel(){
         <button class="btn" style="border-color:var(--warn);color:var(--warn)" data-rq="no|${r.id}|">${r.kind==="gap"?"بستن درخواست":"رد: باید بیاید"}</button></div>
     </div>`}).join("")+`</div>`;
 }
+/* بالای صفحهٔ مدیر: فقط یک خط خلاصه با دکمهٔ رسیدگی (جزئیات فقط در تب «برنامه» است) */
 function topAlerts(){
-  if(!sched) return "";
-  const pend=Object.values(reqs).filter(liveReq).sort((a,b)=>a.at-b.at);
-  const al=(sched.alerts||[]).filter(a=>!a.resolved), nc=newConflicts();
-  if(!pend.length&&!al.length&&!nc.length) return "";
-  const icon={yes:"✓",no:"✗",wait:"…"};
-  let h=`<div class="panel" style="border:2px solid var(--warn);background:var(--warn-bg)"><strong style="color:var(--warn)">هشدارها</strong><ul class="clean issues" style="margin-top:4px">`;
-  for(const r of pend){const sts=askStatus(r);h+=`<li>${r.kind==="gap"?`<strong>${esc(nm(r.doctor))}</strong> ${esc(keyLabel(r.key))} دستیار ندارد.`:`<strong>${esc(nm(r.who))}</strong> ${esc(keyLabel(r.key))} نمی‌آید.`} ${sts.length?"پیام رفت برای: "+sts.map(x=>`${esc(nm(x.id))} ${icon[x.st]}`).join("، "):"کسی برای پرسیدن نبود."}${docPref(r)?` ترجیح ${esc(nm(r.doctor))}: ${esc(nm(docPref(r)))}.`:""}</li>`}
-  for(const a of al.slice(0,5)) h+=`<li>${esc(a.text)}</li>`;
-  if(al.length>5) h+=`<li class="note">و ${fa(al.length-5)} هشدار دیگر</li>`;
-  if(nc.length) h+=`<li>برنامه با قوانین جدید در ${fa(nc.length)} مورد نمی‌خواند.</li>`;
-  h+=`</ul>${tab!=="schedule"?`<p class="row" style="margin-top:8px"><button class="btn" data-tab="schedule">رسیدگی</button></p>`:""}</div>`;
-  return h;
+  if(!sched||tab==="schedule") return "";
+  const pend=Object.values(reqs).filter(liveReq).length, nc=newConflicts().length;
+  let gaps=0; for(const [k] of DAYS) for(const [sk] of SHIFTS) gaps+=slotGaps(sched,k+"_"+sk).length;
+  if(!pend&&!nc&&!gaps) return "";
+  const parts=[gaps?`${fa(gaps)} جای خالی`:"",pend?`${fa(pend)} درخواست`:"",nc?"برنامه با قوانین جدید نمی‌خواند":""].filter(Boolean).join(" · ");
+  return `<div class="panel" style="border:2px solid var(--warn);background:var(--warn-bg)"><div class="row" style="justify-content:space-between;align-items:center"><span><strong style="color:var(--warn)">نیاز به رسیدگی:</strong> ${parts}</span><button class="btn" data-tab="schedule">رسیدگی</button></div></div>`;
 }
 
 async function approveRequest(rid,vol){
@@ -2131,6 +2120,29 @@ function gapCands(key,g){
   return [];
 }
 /* جای خالی‌ها: هر کدام زیر همان شیفتِ همان روز (در تخته)، با دکمه‌های پر کردن با یک کلیک */
+/* جملهٔ آمادهٔ جعبهٔ دستور برای جای خالیِ بدون کاندید (حالت ۲) */
+function gapPromptText(key,g){
+  const L=keyLabel(key);
+  if(g.t==="asst") return `${L} برای ${nm(g.d)} دستیار … را بگذار`;
+  if(g.t==="unit") return `${L} دکتر … را روی یونیت ${fa(g.u)} بگذار`;
+  return `${L} منشی … را اضافه کن`;
+}
+/* متن هشدارهایی که همان جای خالی محاسبه‌شده را تکرار می‌کنند (دکمه‌اش خودش هست)؛ نباید دوباره نشان داده شوند */
+const GAP_DUP=/خالی|دستیار مجاز و در دسترس|منشی (لازم بود|جایگزین|کم است)|بدون دستیار|دستیار ندارد|دستیار آزاد ندارد/;
+/* حالت ۳: توضیح‌های بی‌اقدام یک شیفت (فقط نمایش، بدون «دیدم») */
+function shiftInfos(key){
+  if(!sched) return [];
+  const pre=keyLabel(key)+":", hasGap=slotGaps(sched,key).length>0, out=[];
+  for(const t of sched.issues||[]) if(t.startsWith(pre)&&!GAP_DUP.test(t)) out.push(t.slice(pre.length).trim());
+  if(hasGap) for(const a of sched.alerts||[]) if(!a.resolved&&a.key===key&&!GAP_DUP.test(a.text)) out.push(a.text.startsWith(pre)?a.text.slice(pre.length).trim():a.text);
+  return [...new Set(out)];
+}
+/* موارد عمومی که به هیچ شیفتی وصل نیستند */
+function generalIssues(){
+  if(!sched) return [];
+  const labels=[]; for(const [k] of DAYS) for(const [sk] of SHIFTS) labels.push(keyLabel(k+"_"+sk)+":");
+  return (sched.issues||[]).filter(t=>!labels.some(l=>t.startsWith(l))&&!GAP_DUP.test(t));
+}
 function gapItemHtml(key,g){
   const cands=gapCands(key,g);
       const what=g.t==="asst"?`${nm(g.d)} (یونیت ${fa(g.u)}) دستیار ندارد`:g.t==="unit"?`یونیت ${fa(g.u)} خالی است`:`منشی کم است`;
@@ -2145,19 +2157,22 @@ function gapItemHtml(key,g){
       const notAllowed=g.t==="asst"&&cands.length&&!cands.some(c=>c.ok);
       if(g.t==="asst"&&cands.length) btns+=pendingGapReq(key,g.d)?`<span class="note">از آنکال‌ها پرسیده شده؛ جواب‌ها در «درخواست‌ها»</span>`:`<button class="btn quiet" data-gask="${key}|${g.d}">از آنکال‌ها بپرس</button>`;
   return `<div class="gapitem"><div class="gaphd">⚠ ${esc(what)}</div>
-    ${cands.length?`<div class="note" style="margin:2px 0 4px">${notAllowed?`در دسترس هستند ولی جزو دستیارهای مجاز ${esc(nm(g.d))} نیستند:`:"در دسترس:"}</div><div class="row">${btns}</div>`:`<div class="note">کسی در این زمان آزاد نیست${g.t==="unit"?"":"؛ می‌توانید با دستور بالا از شیفت دیگری کسی را بیاورید"}.</div>`}</div>`;
+    ${cands.length?`<div class="note" style="margin:2px 0 4px">${notAllowed?`در دسترس هستند ولی جزو دستیارهای مجاز ${esc(nm(g.d))} نیستند:`:"در دسترس:"}</div><div class="row">${btns}</div>`:`<div class="note">کسی در این زمان آزاد نیست.</div><p class="row" style="margin-top:6px"><button class="btn quiet" data-prompt="${esc(gapPromptText(key,g))}">در جعبهٔ دستور بنویس</button></p>`}</div>`;
 }
 function gapsHtmlFor(key){ return slotGaps(sched,key).map(g=>gapItemHtml(key,g)).join(""); }
 let gapsKey=null;
 function gapsPageHtml(){
   if(!sched||!gapsKey) return "";
-  const gh=gapsHtmlFor(gapsKey);
-  return gh?`<div class="panel">${gh}</div>`:`<div class="panel"><p class="okline" style="margin:0">این شیفت جای خالی ندارد ✓</p></div>`;
+  const gh=gapsHtmlFor(gapsKey), infos=shiftInfos(gapsKey);
+  let h="";
+  if(gh) h+=`<div class="panel">${gh}</div>`;
+  if(infos.length) h+=`<div class="panel"><strong>توضیح</strong><ul class="clean issues" style="margin-top:4px">${infos.map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`;
+  return h||`<div class="panel"><p class="okline" style="margin:0">این شیفت جای خالی یا توضیحی ندارد ✓</p></div>`;
 }
 /* پیوند کوچک داخل هر شیفتِ تخته؛ فقط همان روز و صبح/عصر را در یک برگه باز می‌کند */
 function gapLinkHtml(key){
-  const n=slotGaps(sched,key).length; if(!n) return "";
-  return `<button class="gaplink" data-gaps-key="${key}">⚠ ${fa(n)} جای خالی <span>‹</span></button>`;
+  const n=slotGaps(sched,key).length, m=shiftInfos(key).length; if(!n&&!m) return "";
+  return `<button class="gaplink ${n?"":"info"}" data-gaps-key="${key}">${n?`⚠ ${fa(n)} جای خالی`:""}${n&&m?" · ":""}${m?`ℹ ${fa(m)} توضیح`:""} <span>‹</span></button>`;
 }
 function openGapsPage(key){
   gapsKey=key;
@@ -2913,6 +2928,10 @@ function bind(){
     for(const id of ids){ const n=mgrnotes[id]; if(n){ n.seen=true; await db.doc("mgrnotes/"+id).set({...n,seen:true}) } } render();
   });
   document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open; if(d.open&&d.dataset.al.startsWith("ok-")) markSeen(who,d.dataset.al)});
+  document.querySelectorAll("[data-prompt]").forEach(b=>b.onclick=()=>{
+    mgrDraft=b.dataset.prompt; if(Shell.kind()==="gaps") Shell.close();
+    if(tab!=="schedule"){tab="schedule"} render(); scrollTo(0,0); const t=$("#mgrTxt"); if(t){t.focus(); const i=t.value.indexOf("…"); if(i>=0) t.setSelectionRange(i,i+1); else t.setSelectionRange(t.value.length,t.value.length)}
+  });
   document.querySelectorAll("[data-gaps-key]").forEach(b=>b.onclick=()=>openGapsPage(b.dataset.gapsKey));
   document.querySelectorAll("[data-oncall-day]").forEach(b=>b.onclick=()=>openCalDay(isoOf(weekDateOf(b.dataset.oncallDay))));
   document.querySelectorAll("[data-prof]").forEach(b=>b.onclick=()=>openStaffProfile(b.dataset.prof));
