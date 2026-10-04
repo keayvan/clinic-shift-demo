@@ -223,7 +223,7 @@ function myShifts(id){
   for(const [k,n] of DAYS) for(const [sk,sn] of SHIFTS){
     const sl=sched.slots?.[k+"_"+sk]; if(!sl) continue;
     for(const p of sl.pairs||[]){
-      if(p.d===id) out.push(`${n} ${sn}${p.u?"، یونیت "+fa(p.u):""}، با ${p.a?nm(p.a):"— بدون دستیار"}`);
+      if(p.d===id) out.push(`${n} ${sn}${p.u?"، یونیت "+fa(p.u):""}، ${p.a?"با "+nm(p.a):"هنوز دستیار ندارد"}`);
       if(p.a===id) out.push(`${n} ${sn}${p.u?"، یونیت "+fa(p.u):""}، با ${nm(p.d)}`);
     }
     if((sl.reception||[]).includes(id)) out.push(`${n} ${sn}، پذیرش`);
@@ -298,7 +298,7 @@ function weekCalHtml(id){
       const sl=sched?.slots?.[k+"_"+sk]; if(!sl) return `<td class="note">—</td>`;
       const parts=[];
       for(const p of sl.pairs||[]){
-        if(p.d===id) parts.push(`یونیت ${fa(p.u||"")} با ${p.a?esc(nm(p.a)):"بدون دستیار"}`);
+        if(p.d===id) parts.push(`یونیت ${fa(p.u||"")} ${p.a?"با "+esc(nm(p.a)):"<span class=\"note\">(هنوز دستیار ندارد)</span>"}`);
         if(p.a===id) parts.push(`${esc(nm(p.d))}${p.u?"، یونیت "+fa(p.u):""}`);
       }
       const rec=(sl.reception||[]).map(nm);
@@ -1541,7 +1541,7 @@ function seenIds(id){try{return new Set(JSON.parse(localStorage.getItem("seenids
 function markSeen(id,nid){try{const s=seenIds(id);s.add(nid);localStorage.setItem("seenids_"+id,JSON.stringify([...s].slice(-200)))}catch(e){}}
 function noticesPanel(id){
   const seen=seenIds(id);
-  const list=[...(sched?.notices||[]),...Object.values(staffnotes)].filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id)&&!seen.has(n.id||String(n.at))).sort((a,b)=>a.at-b.at);
+  const list=[...(sched?.notices||[]),...Object.values(staffnotes)].filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id)&&!seen.has(n.id||String(n.at))).sort((a,b)=>a.at-b.at).filter((n,i,arr)=>!arr.slice(i+1).some(m=>m.text===n.text));   /* متن عیناً تکراری فقط یک بار (جدیدترین) */
   if(!list.length) return "";
   const when=n=>new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"});
   const items=list.slice(-8).reverse().map(n=>{
@@ -2304,7 +2304,7 @@ function outcomeMsg(results){
   }).join(" ");
 }
 function openPatientSheet(pid){
-  patDraft.openId=pid; patDraft.noteText=""; patDraft.noteErr=""; patDraft.pending=null; patDraft.msg=""; patDraft.editingInfo=false; patDraft.opgMsg=""; patOpen={};
+  patDraft.openId=pid; patDraft.noteText=""; patDraft.noteErr=""; patDraft.pending=null; patDraft.msg=""; patDraft.infoMode="view"; patDraft.infoDraft={}; patDraft.infoPending=null; patDraft.infoMsg=""; patDraft.opgMsg=""; patOpen={};
   renderPatientSheet();
 }
 function planItemsPlain(p){ return p.plan.length?p.plan.map(it=>`${it.status==="done"?"✓":"—"} ${planItemLabel(it)}`).join("<br>"):"کاری ثبت نشده"; }
@@ -2394,10 +2394,6 @@ function renderPatientSheet(){
   const isMgr=who==="manager";
   const canEditPlan=byId(who)?.role==="doctor";
   const exportRow=`<div class="row" style="margin:8px 0"><button class="btn" data-act="pat-pdf">دانلود PDF</button><button class="btn quiet" data-act="pat-print">چاپ</button>${(who==="manager"||who===p.doctor)?`<button class="btn" data-pat-refer="1">${(p.refs||[]).length?"تغییر ارجاع":"ارجاع به دکتر دیگر"}</button>`:""}</div>`;
-  const showEdit=!isMgr||patDraft.editingInfo;
-  const info=showEdit?`${PF.fields("e",p)}
-    ${isMgr?"":`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-info-save">ذخیره اطلاعات</button></p>`}`
-    :PF.view(p);
   const rowOf=it=>!canEditPlan?`<div class="row" style="justify-content:space-between;align-items:flex-start;border-top:1px solid var(--line);padding:6px 0">
       <span style="color:${it.status==="done"?"var(--ok)":"var(--warn)"};${it.status==="done"?"text-decoration:line-through":"font-weight:600"}">${it.status==="done"?"✓ ":""}${planItemLabel(it)}</span>
       <span class="note">${it.price?fa(it.price)+" تومان":"—"}</span>
@@ -2412,7 +2408,9 @@ function renderPatientSheet(){
   const allergyLine=PF.allergyText(p)?`<p class="warn" style="margin:6px 0"><strong>⚠ حساسیت: </strong>${esc(PF.allergyText(p))}</p>`:"";
   /* کارهای انجام‌شده و لازم: همیشه باز و بالای پرونده، قبل از مشخصات */
   const refLine=`<p class="note" style="margin:0 0 4px">${(p.refs||[]).length?`ارجاع به: <strong>${esc(REF.names(p.refs))}</strong> `:""}${(p.refs||[]).includes(who)?`<span class="chip">به شما ارجاع شده (دکتر اصلی: ${esc(nm(p.doctor))})</span>`:""}</p>`;
-  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${refLine}${allergyLine}${exportRow}
+  const refNotes=(p.refNotes||[]).filter(n=>who==="manager"||who===p.doctor||(n.to||[]).includes(who)).slice(-3).reverse();
+  const refNoteHtml=refNotes.map(n=>`<div class="warn" style="margin:6px 0"><strong>📌 یادداشت ارجاع از ${n.by==="manager"?"مدیر":esc(nm(n.by))}:</strong> ${esc(n.text)} <span class="note">${new Date(n.at).toLocaleDateString("fa-IR")}</span></div>`).join("");
+  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${refLine}${allergyLine}${refNoteHtml}${exportRow}
     <div class="psec fixed"><div class="psectitle">کارهای انجام‌شده و لازم</div><div class="psecbody"><div class="clean">${rows}</div><div style="margin-top:12px">`;
   if(canEditPlan){
     if(patDraft.pending){
@@ -2429,8 +2427,7 @@ function renderPatientSheet(){
   }
   body+=`</div></div></div>`;
   /* بقیهٔ بخش‌ها: بسته، با کلیک باز می‌شوند */
-  if(showEdit){ let n=0; body+=info.replace(/<details class="pfsec"\s*(open)?\s*style="margin-top:10px">/g,()=>{const k="pf"+(n++);return `<details class="pfsec psec" data-sec="${k}" ${patOpen[k]?"open":""}>`}); }
-  else for(const g of PF.viewGroups(p)) body+=sec(g.key,g.title,g.html);
+  body+=patInfoHtml(p,sec);
   body+=LAB.sheetPanel(p);
   body+=IMP.sheetPanel(p);
   body+=sec("opg","OPG و تصاویر",`<div class="row" style="justify-content:flex-end"><label class="btn">📷 آپلود OPG<input type="file" id="patOpg" accept="image/*" multiple hidden></label></div>
@@ -2439,10 +2436,10 @@ function renderPatientSheet(){
   const myAp=Object.entries(appts).filter(([,a])=>a.patientId===p.id).sort((x,y)=>(y[1].date+(y[1].time||"")).localeCompare(x[1].date+(x[1].time||"")));
   body+=sec("appts",`نوبت‌های بیمار (${fa(myAp.length)})`,myAp.length?myAp.map(([,a])=>{const st=APPT_ST[a.status]||APPT_ST.scheduled;return `<div style="border-top:1px solid var(--line);padding:6px 0"><strong>${esc(apptDateLabel(a.date))}</strong>${a.time?` <span class="note">${esc(a.time)}</span>`:""} <span class="note">— ${esc(nm(a.doctor))}</span> <span style="color:${st[1]}">${st[0]}</span>${a.note?`<div class="note">${esc(a.note)}</div>`:""}</div>`}).join(""):`<p class="note">هنوز نوبتی برای این بیمار ثبت نشده.</p>`);
   body+=sec("fin","امور مالی",financeHtml(p));
-  if(isMgr) body+=`${patErr?`<p class="warn">${esc(patErr)}</p>`:""}<p class="row" style="margin-top:16px"><button class="btn ${patDraft.editingInfo?"primary":"quiet"}" data-act="pat-toggle-edit">${patDraft.editingInfo?"ذخیره و پایان ویرایش":"ویرایش اطلاعات"}</button></p>`;
+  if(patErr) body+=`<p class="warn">${esc(patErr)}</p>`;
   Shell.sheet(body,root=>{
     root.querySelectorAll("details[data-sec]").forEach(d=>d.ontoggle=()=>{patOpen[d.dataset.sec]=d.open});
-    root.querySelectorAll("[data-pat-refer]").forEach(b=>b.onclick=()=>REF.open("ارجاع بیمار «"+p.name+"» به دکتر دیگر",p.refs||[],ids=>patRefSave(p.id,ids),{exclude:["assistant","reception","insurance","lab"],exceptIds:[p.doctor],always:"دکتر اصلی"}));
+    root.querySelectorAll("[data-pat-refer]").forEach(b=>b.onclick=()=>REF.open("ارجاع بیمار «"+p.name+"» به دکتر دیگر",p.refs||[],(ids,note)=>patRefSave(p.id,ids,note),{exclude:["assistant","reception","insurance","lab"],exceptIds:[p.doctor],always:"دکتر اصلی",after:()=>renderPatientSheet(),note:"یادداشت برای دکتر ارجاع‌شده (اختیاری؛ در بخش مهمِ پروندهٔ بیمار می‌آید)"}));
     root.querySelectorAll("[data-tog]").forEach(cb=>cb.onchange=()=>toggleItem(patDraft.openId,cb.dataset.tog));
     root.querySelectorAll("[data-imp-open]").forEach(b=>b.onclick=()=>IMP.open(b.dataset.impOpen));
     root.querySelectorAll("[data-delitem]").forEach(b=>b.onclick=()=>deleteItem(patDraft.openId,b.dataset.delitem));
@@ -2463,14 +2460,18 @@ function renderPatientSheet(){
   },{kind:"patient"});
 }
 /* ارجاع بیمار به دکتر(های) دیگر: اشتراک پرونده؛ دکتر اصلی می‌ماند و دکتر ارجاع‌شده بیمار را در «بیماران من» می‌بیند و روی طرح درمان کار می‌کند */
-async function patRefSave(pid,ids){
+async function patRefSave(pid,ids,note){
   const p=patients[pid]; if(!p) return;
   const old=new Set(p.refs||[]), added=ids.filter(x=>!old.has(x)), removed=[...old].filter(x=>!ids.includes(x));
+  note=(note||"").trim().slice(0,500);
   const q={...p,refs:ids,refLog:[...(p.refLog||[]),{at:Date.now(),by:who,added,removed}].slice(-30),updatedAt:Date.now()};
+  if(note&&ids.length) q.refNotes=[...(p.refNotes||[]),{at:Date.now(),by:who,to:ids,text:note}].slice(-10);   /* در «مهم»های پروندهٔ بیمار نشان داده می‌شود */
   await db.doc("patients/"+pid).set(q); patients[pid]=q;
-  if(added.length) await notifyStaff(added,`ارجاع بیمار «${p.name}» از ${who==="manager"?"مدیر":nm(who)} به شما${who!==p.doctor?` (دکتر اصلی: ${nm(p.doctor)})`:""}. در «بیماران من» می‌بینی‌اش.`);
+  const by=who==="manager"?"مدیر":nm(who), nt=note?` یادداشت: «${note.length>120?note.slice(0,120)+"…":note}»`:"";
+  if(added.length) await notifyStaff(added,`ارجاع بیمار «${p.name}» از ${by} به شما${who!==p.doctor?` (دکتر اصلی: ${nm(p.doctor)})`:""}.${nt} در «بیماران من» می‌بینی‌اش.`);
+  if(note&&ids.length&&!added.length) await notifyStaff(ids,`یادداشت تازه برای بیمار «${p.name}» از ${by}: «${note.length>120?note.slice(0,120)+"…":note}»`);
   if(removed.length) await notifyStaff(removed,`ارجاع بیمار «${p.name}» به شما برداشته شد.`);
-  renderPatientSheet();
+  if(who!=="manager"&&(added.length||removed.length||note)) await notifyManager(`${nm(who)} بیمار «${p.name}» را ${added.length?"به "+added.map(nm).join("، ")+" ارجاع داد":removed.length?"از ارجاع "+removed.map(nm).join("، ")+" درآورد":"یادداشت ارجاع به‌روز کرد"}${note?": «"+(note.length>80?note.slice(0,80)+"…":note)+"»":""}`);
 }
 async function patOpgUpload(files){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
@@ -2494,15 +2495,27 @@ async function patOpgDel(id){
   try{await IMP.files.IDB.del(id)}catch(e){} patDraft.opgMsg="تصویر حذف شد."; patDraft.opgBad=false;
   await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
 }
-async function patInfoSave(){
-  const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
-  Object.assign(p,PF.read("e"));
-  await db.doc("patients/"+pid).set(p); patients[pid]=p; renderPatientSheet();
+/* مشخصات بیمار: اول فقط نمایش؛ «ویرایش» ← «بررسی تغییرها» ← «تأیید و ذخیره» (همان الگوی «مشخصات من») */
+function patInfoDiff(p,q){
+  const mp=Object.fromEntries(PF.lines(p)), mq=Object.fromEntries(PF.lines(q)), out=[];
+  for(const k of new Set([...Object.keys(mp),...Object.keys(mq)])) if(String(mp[k]??"")!==String(mq[k]??"")) out.push([k,String(mp[k]??"—"),String(mq[k]??"—")]);
+  const ap=PF.allergyText(p), aq=PF.allergyText(q); if(ap!==aq) out.push(["حساسیت",ap||"—",aq||"—"]);
+  return out;
 }
-async function patToggleEdit(){
-  if(patDraft.editingInfo) await patInfoSave();
-  patDraft.editingInfo=!patDraft.editingInfo;
-  renderPatientSheet();
+function patInfoHtml(p,sec){
+  const mode=patDraft.infoMode||"view", msg=patDraft.infoMsg;
+  if(mode==="edit"){
+    let n=0;
+    const form=PF.fields("e",p,patDraft.infoDraft||{}).replace(/<details class="pfsec"\s*(open)?\s*style="margin-top:10px">/g,()=>`<details class="pfsec psec" data-sec="pf${n++}" open>`);
+    return `<div class="panel"><strong>ویرایش مشخصات</strong>${msg?`<p class="warn" style="margin-top:6px">${esc(msg)}</p>`:""}</div>${form}
+      <p class="row" style="margin:10px 0"><button class="btn primary" data-act="pat-info-review">بررسی تغییرها</button><button class="btn quiet" data-act="pat-info-cancel">انصراف</button></p>`;
+  }
+  if(mode==="confirm"){
+    const d=patInfoDiff(p,patDraft.infoPending||p);
+    return `<div class="panel"><strong>این تغییرها ذخیره شود؟</strong><ul class="clean issues" style="margin-top:6px">${d.map(([k,o,nw])=>`<li><strong>${esc(k)}:</strong> <span class="note">${esc(o)}</span> ← ${esc(nw)}</li>`).join("")}</ul>
+      <p class="row" style="margin-top:10px"><button class="btn primary" data-act="pat-info-confirm">تأیید و ذخیره</button><button class="btn quiet" data-act="pat-info-back">برگشت به ویرایش</button></p></div>`;
+  }
+  return PF.viewGroups(p).map((g,i)=>sec(g.key,g.title,g.html+(i===0?`<p class="row" style="margin-top:8px"><button class="btn" data-act="pat-info-edit">ویرایش مشخصات</button></p>`:""))).join("")+(msg?`<p class="okline">${esc(msg)}</p>`:"");
 }
 async function toggleItem(pid,itemId){
   const p=structuredClone(patients[pid]); if(!p) return;
@@ -2946,6 +2959,7 @@ function bind(){
     const ids=b.dataset.mnote==="all"?Object.values(mgrnotes).filter(n=>!n.seen).map(n=>n.id):[b.dataset.mnote];
     for(const id of ids){ const n=mgrnotes[id]; if(n){ n.seen=true; await db.doc("mgrnotes/"+id).set({...n,seen:true}) } } render();
   });
+  document.querySelectorAll("[data-seen-one]").forEach(b=>b.onclick=()=>{markSeen(who,b.dataset.seenOne);render()});
   document.querySelectorAll("details[data-al]").forEach(d=>d.ontoggle=()=>{alertOpen[d.dataset.al]=d.open; if(d.open&&d.dataset.al.startsWith("ok-")) markSeen(who,d.dataset.al)});
   document.querySelectorAll("[data-prompt]").forEach(b=>b.onclick=()=>{
     mgrDraft=b.dataset.prompt; if(Shell.kind()==="gaps") Shell.close();
@@ -3092,8 +3106,20 @@ async function act(a,btn){
   if(a==="pat-parse") return patNoteParseRun();
   if(a==="pat-apply") return patApplyRun();
   if(a==="pat-cancel-note"){patDraft.pending=null;return renderPatientSheet()}
-  if(a==="pat-info-save") return patInfoSave();
-  if(a==="pat-toggle-edit") return patToggleEdit();
+  if(a==="pat-info-edit"){patDraft.infoMode="edit";patDraft.infoDraft={};patDraft.infoMsg="";return renderPatientSheet()}
+  if(a==="pat-info-cancel"){patDraft.infoMode="view";patDraft.infoDraft={};patDraft.infoPending=null;patDraft.infoMsg="";return renderPatientSheet()}
+  if(a==="pat-info-back"){patDraft.infoMode="edit";return renderPatientSheet()}
+  if(a==="pat-info-review"){
+    const p=patients[patDraft.openId]; if(!p) return; const vals=PF.read("e"), q=PF.derive({...p,...vals});
+    patDraft.infoDraft=vals;
+    if(!patInfoDiff(p,q).length){patDraft.infoMsg="تغییری نداده‌ای.";return renderPatientSheet()}
+    patDraft.infoPending=q;patDraft.infoMsg="";patDraft.infoMode="confirm";return renderPatientSheet();
+  }
+  if(a==="pat-info-confirm"){
+    const pid=patDraft.openId, q=patDraft.infoPending; if(!q||!patients[pid]) return; btn.disabled=true;
+    await db.doc("patients/"+pid).set(q); patients[pid]=q;
+    patDraft.infoMode="view";patDraft.infoDraft={};patDraft.infoPending=null;patDraft.infoMsg="ذخیره شد.";return renderPatientSheet();
+  }
   if(a==="pat-pdf") return patientDownloadPdf(patDraft.openId,btn);
   if(a==="pat-print"){patientPrint(patDraft.openId);return}
   if(a==="pat-intake") return patIntakeRun();

@@ -11,11 +11,14 @@ const REF = (() => {
       return `<div class="cathead" style="margin-top:12px">${t}</div>` + rows.map(s => `<label class="row" style="gap:8px;align-items:center;padding:4px 6px"><input type="checkbox" data-refid="${s.id}" ${cur.has(s.id) ? "checked" : ""}><span>${esc(s.name)}</span></label>`).join("");
     }).join("");
     Shell.sheet(`<h2>${esc(title)}</h2><p class="note" style="margin:0 0 4px">فقط کسانی که اینجا تیک بزنی (و مدیر${opts.always ? " و " + opts.always : ""}) این مورد را می‌بینند.</p>${body}
-      <div class="row" style="margin-top:14px"><button class="btn primary" id="refSave">ذخیره</button><button class="btn quiet" data-close-sheet>انصراف</button></div>`, root => {
+      ${opts.note ? `<label class="note" for="refNote" style="display:block;margin-top:12px">${esc(opts.note)}</label><textarea id="refNote" style="min-height:64px" placeholder="مثلاً: عصب ۱۴ را زده‌ام؛ لطفاً روکشش را شما انجام بدهید."></textarea>` : ""}
+      <div class="row" style="margin-top:14px"><button class="btn primary" id="refSave">ذخیره</button><button class="btn quiet" id="refCancel">انصراف</button></div>`, root => {
+      root.querySelector("#refCancel").onclick = () => { Shell.close(); if (opts.after) opts.after(); };
       root.querySelector("#refSave").onclick = async e => {
         e.target.disabled = true;
         const ids = [...root.querySelectorAll("[data-refid]")].filter(x => x.checked).map(x => x.dataset.refid);
-        try { await onSave(ids); } finally { Shell.close(); }
+        const noteEl = root.querySelector("#refNote"), note = noteEl ? noteEl.value.trim() : "";
+        try { await onSave(ids, note); } finally { Shell.close(); if (opts.after) opts.after(); }
       };
     });
   }
