@@ -5,9 +5,9 @@ const REF = (() => {
   const GROUPS = [["doctor", "دکترها"], ["assistant", "دستیارها"], ["reception", "منشی‌ها"], ["insurance", "مسئول بیمه"], ["lab", "لابراتوار"]];
   const names = ids => (ids || []).map(id => (byId(id) ? byId(id).name : "")).filter(Boolean).join("، ") || "—";
   function open(title, current, onSave, opts = {}) {
-    const ex = new Set(opts.exclude || []), cur = new Set(current || []);
+    const ex = new Set(opts.exclude || []), cur = new Set(current || []), exId = new Set(opts.exceptIds || []);
     const body = GROUPS.filter(([r]) => !ex.has(r)).map(([r, t]) => {
-      const rows = ofRole(r); if (!rows.length) return "";
+      const rows = ofRole(r).filter(s => !exId.has(s.id)); if (!rows.length) return "";
       return `<div class="cathead" style="margin-top:12px">${t}</div>` + rows.map(s => `<label class="row" style="gap:8px;align-items:center;padding:4px 6px"><input type="checkbox" data-refid="${s.id}" ${cur.has(s.id) ? "checked" : ""}><span>${esc(s.name)}</span></label>`).join("");
     }).join("");
     Shell.sheet(`<h2>${esc(title)}</h2><p class="note" style="margin:0 0 4px">فقط کسانی که اینجا تیک بزنی (و مدیر${opts.always ? " و " + opts.always : ""}) این مورد را می‌بینند.</p>${body}

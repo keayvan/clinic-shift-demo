@@ -149,6 +149,7 @@ async function exportInsXlsx(){
   db.collection("archive").onSnapshot(q=>{archive={};q.docs.forEach(x=>archive[x.id]=x.data());render()},()=>{});
   db.collection("patients").onSnapshot(q=>{patients={};q.docs.forEach(x=>patients[x.id]=x.data());render();if(patDraft.openId&&Shell.kind()==="patient")renderPatientSheet()},()=>{});
   db.collection("inventory").onSnapshot(q=>{inventory={};q.docs.forEach(x=>inventory[x.id]=x.data());render()},()=>{});
+  db.collection("staffnotes").onSnapshot(q=>{staffnotes={};q.docs.forEach(x=>staffnotes[x.id]=x.data());render()},()=>{});
   db.collection("mgrnotes").onSnapshot(q=>{mgrnotes={};q.docs.forEach(x=>mgrnotes[x.id]=x.data());if(who==="manager")render()},()=>{});
   db.collection("appointments").onSnapshot(q=>{appts={};q.docs.forEach(x=>appts[x.id]=x.data());render()},()=>{});
   LAB.start();
@@ -1284,7 +1285,8 @@ function selfProfileHtml(id){
     +hoursChartHtml(id)+`<div class="panel"><strong>مشخصات</strong>${body}</div>`;
 }
 /* اعلان‌های کوتاه برای مدیر: چه کسی چه چیزی را عوض کرد */
-let mgrnotes={};
+let mgrnotes={}, staffnotes={};
+async function notifyStaff(to,text){ const id=uid(); await db.doc("staffnotes/"+id).set({id,at:Date.now(),to,text}); }
 async function notifyManager(text){ const id=uid(); await db.doc("mgrnotes/"+id).set({id,at:Date.now(),text,seen:false}); }
 function mgrNotesPanel(){
   const list=Object.values(mgrnotes).filter(n=>!n.seen).sort((a,b)=>b.at-a.at); if(!list.length) return "";
@@ -1538,9 +1540,8 @@ function alertItem(key,summary,body,cls,defOpen){
 function seenIds(id){try{return new Set(JSON.parse(localStorage.getItem("seenids_"+id)||"[]"))}catch(e){return new Set()}}
 function markSeen(id,nid){try{const s=seenIds(id);s.add(nid);localStorage.setItem("seenids_"+id,JSON.stringify([...s].slice(-200)))}catch(e){}}
 function noticesPanel(id){
-  if(!sched) return "";
   const seen=seenIds(id);
-  const list=(sched.notices||[]).filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id)&&!seen.has(n.id||String(n.at)));
+  const list=[...(sched?.notices||[]),...Object.values(staffnotes)].filter(n=>(n.to==="all"||(Array.isArray(n.to)&&n.to.includes(id)))&&n.at>seenAt(id)&&!seen.has(n.id||String(n.at))).sort((a,b)=>a.at-b.at);
   if(!list.length) return "";
   const when=n=>new Date(n.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"});
   const items=list.slice(-8).reverse().map(n=>{
@@ -2257,13 +2258,13 @@ function planItemLabel(it){
 }
 function patientsPanel(id,part){
   if(byId(id)?.role!=="doctor") return "";
-  const mine=Object.entries(patients).filter(([,p])=>p.doctor===id).sort((a,b)=>b[1].createdAt-a[1].createdAt);
+  const mine=Object.entries(patients).filter(([,p])=>p.doctor===id||(p.refs||[]).includes(id)).sort((a,b)=>b[1].createdAt-a[1].createdAt);
   let h=part==="new"?`<div class="panel"><strong>بیمار جدید</strong>`:`<div class="panel"><strong>بیماران من</strong>`;
   if(part!=="new"){
   if(!mine.length) h+=`<p class="note" style="margin:6px 0 0">هنوز بیماری ثبت نشده.</p>`;
   else{
     h+=`<p class="row" style="margin-top:8px"><button class="btn quiet" data-act="pat-list-toggle" aria-expanded="${patListOpen}">${patListOpen?"بستن فهرست بیماران":"نمایش بیماران من ("+fa(mine.length)+")"}</button></p>`;
-    if(patListOpen) h+=`<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${mine.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div>`;
+    if(patListOpen) h+=`<div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>تاریخ ثبت</th><th>اقلام طرح</th></tr></thead><tbody>${mine.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button>${p.doctor!==id?` <span class="chip">ارجاع از ${esc(nm(p.doctor))}</span>`:(p.refs||[]).length?` <span class="note">(ارجاع: ${esc(REF.names(p.refs))})</span>`:""}</td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa((p.plan||[]).length)}</td></tr>`).join("")}</tbody></table></div>`;
   }
   h+=`</div>`; return h;}
   h+=`<div style="margin-top:10px">
@@ -2410,7 +2411,9 @@ function renderPatientSheet(){
   const sec=(key,title,inner,forceOpen)=>`<details class="psec" data-sec="${key}" ${forceOpen||patOpen[key]?"open":""}><summary>${title}</summary><div class="psecbody">${inner}</div></details>`;
   const allergyLine=PF.allergyText(p)?`<p class="warn" style="margin:6px 0"><strong>⚠ حساسیت: </strong>${esc(PF.allergyText(p))}</p>`:"";
   /* کارهای انجام‌شده و لازم: همیشه باز و بالای پرونده، قبل از مشخصات */
-  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${allergyLine}${exportRow}
+  const canRefer=who==="manager"||who===p.doctor;
+  const refLine=`<p class="note" style="margin:0 0 4px">${(p.refs||[]).length?`ارجاع به: <strong>${esc(REF.names(p.refs))}</strong> `:""}${canRefer?`<button class="linkbtn" data-pat-refer="1">${(p.refs||[]).length?"تغییر ارجاع":"ارجاع به دکتر دیگر…"}</button>`:""}${(p.refs||[]).includes(who)?`<span class="chip">به شما ارجاع شده (دکتر اصلی: ${esc(nm(p.doctor))})</span>`:""}</p>`;
+  let body=`<h2>${esc(p.name)}</h2><p class="note" style="margin:0 0 4px">${esc(nm(p.doctor))}</p>${refLine}${allergyLine}${exportRow}
     <div class="psec fixed"><div class="psectitle">کارهای انجام‌شده و لازم</div><div class="psecbody"><div class="clean">${rows}</div><div style="margin-top:12px">`;
   if(canEditPlan){
     if(patDraft.pending){
@@ -2440,6 +2443,7 @@ function renderPatientSheet(){
   if(isMgr) body+=`${patErr?`<p class="warn">${esc(patErr)}</p>`:""}<p class="row" style="margin-top:16px"><button class="btn ${patDraft.editingInfo?"primary":"quiet"}" data-act="pat-toggle-edit">${patDraft.editingInfo?"ذخیره و پایان ویرایش":"ویرایش اطلاعات"}</button></p>`;
   Shell.sheet(body,root=>{
     root.querySelectorAll("details[data-sec]").forEach(d=>d.ontoggle=()=>{patOpen[d.dataset.sec]=d.open});
+    root.querySelectorAll("[data-pat-refer]").forEach(b=>b.onclick=()=>REF.open("ارجاع بیمار «"+p.name+"» به دکتر دیگر",p.refs||[],ids=>patRefSave(p.id,ids),{exclude:["assistant","reception","insurance","lab"],exceptIds:[p.doctor],always:"دکتر اصلی"}));
     root.querySelectorAll("[data-tog]").forEach(cb=>cb.onchange=()=>toggleItem(patDraft.openId,cb.dataset.tog));
     root.querySelectorAll("[data-imp-open]").forEach(b=>b.onclick=()=>IMP.open(b.dataset.impOpen));
     root.querySelectorAll("[data-delitem]").forEach(b=>b.onclick=()=>deleteItem(patDraft.openId,b.dataset.delitem));
@@ -2458,6 +2462,16 @@ function renderPatientSheet(){
     const pmo=root.querySelector("#payMonth"); if(pmo) pmo.onchange=e=>{payDraft.jm=+e.target.value;renderPatientSheet()};
     const pyr=root.querySelector("#payYear"); if(pyr) pyr.onchange=e=>{payDraft.jy=+e.target.value;renderPatientSheet()};
   },{kind:"patient"});
+}
+/* ارجاع بیمار به دکتر(های) دیگر: اشتراک پرونده؛ دکتر اصلی می‌ماند و دکتر ارجاع‌شده بیمار را در «بیماران من» می‌بیند و روی طرح درمان کار می‌کند */
+async function patRefSave(pid,ids){
+  const p=patients[pid]; if(!p) return;
+  const old=new Set(p.refs||[]), added=ids.filter(x=>!old.has(x)), removed=[...old].filter(x=>!ids.includes(x));
+  const q={...p,refs:ids,refLog:[...(p.refLog||[]),{at:Date.now(),by:who,added,removed}].slice(-30),updatedAt:Date.now()};
+  await db.doc("patients/"+pid).set(q); patients[pid]=q;
+  if(added.length) await notifyStaff(added,`ارجاع بیمار «${p.name}» از ${who==="manager"?"مدیر":nm(who)} به شما${who!==p.doctor?` (دکتر اصلی: ${nm(p.doctor)})`:""}. در «بیماران من» می‌بینی‌اش.`);
+  if(removed.length) await notifyStaff(removed,`ارجاع بیمار «${p.name}» به شما برداشته شد.`);
+  renderPatientSheet();
 }
 async function patOpgUpload(files){
   const pid=patDraft.openId, p=structuredClone(patients[pid]); if(!p) return;
@@ -2678,7 +2692,7 @@ function patientsTab(){
     </div>
     ${active?`<p class="row" style="margin-top:8px"><span class="note">${fa(rows.length)} بیمار از ${fa(all.length)}</span><button class="btn quiet" data-act="pat-filter-clear">پاک کردن فیلترها</button></p>`:""}</div>`;
   if(!rows.length) return h+`<div class="panel"><p class="note">${active?"بیماری با این فیلتر پیدا نشد.":"هنوز بیماری ثبت نشده."}</p></div>`;
-  h+=`<div class="panel"><div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>دکتر</th><th>تاریخ ثبت</th><th>اقلام طرح</th><th>باقی‌مانده</th></tr></thead><tbody>${rows.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${esc(byId(p.doctor)?.name||"")}</td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa(planLen(p))}</td><td>${fa(left(p))}</td></tr>`).join("")}</tbody></table></div></div>`;
+  h+=`<div class="panel"><div style="overflow-x:auto"><table class="av" style="min-width:0"><thead><tr><th>نام</th><th>دکتر</th><th>تاریخ ثبت</th><th>اقلام طرح</th><th>باقی‌مانده</th></tr></thead><tbody>${rows.map(([pid,p])=>`<tr><td><button class="linkbtn" data-pat="${pid}">${esc(p.name)}</button></td><td>${esc(byId(p.doctor)?.name||"")}${(p.refs||[]).length?`<div class="note">ارجاع: ${esc(REF.names(p.refs))}</div>`:""}</td><td>${new Date(p.createdAt).toLocaleDateString("fa-IR")}</td><td>${fa(planLen(p))}</td><td>${fa(left(p))}</td></tr>`).join("")}</tbody></table></div></div>`;
   return h;
 }
 
