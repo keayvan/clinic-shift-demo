@@ -190,6 +190,7 @@ function render(){
   if(newTabs){ newTabs.scrollLeft=tabScroll; newTabs.querySelector('[aria-selected="true"]')?.scrollIntoView({block:"nearest",inline:"nearest"}); }
   syncStaffPage();
   if(Shell.kind()==="mgrprompt") Shell.refresh(mgrPromptBox(true));
+  if(Shell.kind()==="gaps") Shell.refresh(gapsPageHtml());
   bind();
   if(keepY>0&&Math.abs(window.scrollY-keepY)>2) scrollTo(0,keepY);   /* با هر به‌روزرسانی پس‌زمینه صفحه به بالا نپرد */
 }
@@ -817,7 +818,7 @@ function ocLink(k){
 function schedTab(){
   const miss=missingList(), total=cfg.staff.filter(s=>s.role!=="insurance"&&s.role!=="lab").length;
   const openAl=!!sched&&((sched.alerts||[]).some(a=>!a.resolved));
-  let h=sched?mgrPromptBox():"";
+  let h=sched?mgrPromptBox()+requestsPanel()+gapsSummary():"";
   h+=`<div class="panel">
     <p style="margin:0 0 8px"><strong>${fa(total-miss.length)} از ${fa(total)} نفر</strong> حضور هفته بعد را فرستاده‌اند.</p>
     ${miss.length?`<p class="note" style="margin:0 0 12px">هنوز نفرستاده‌اند: ${miss.map(s=>esc(s.name)).join("، ")}</p>`:""}
@@ -829,18 +830,17 @@ function schedTab(){
   if(!sched) return h+`<p class="note">وقتی حضورها رسید، «ساخت برنامه» را بزنید. برنامه با قوانین بخش «قوانین» چیده می‌شود.</p>`;
   {let used=0,tot=0;for(const k in sched.slots){used+=sched.slots[k].pairs.length;tot+=cfg.settings.chairs}
    h+=`<p><strong>پر بودن یونیت‌ها در هفته: ${fa(Math.round(100*used/Math.max(tot,1)))}٪</strong> <span class="note">(${fa(used)} از ${fa(tot)} یونیت‌شیفت)</span></p>`;}
-  h+=gapsSummary()+`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}${ocLink(k)}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
+  h+=`<div class="board">`+DAYS.map(([k,n])=>`<section class="day"><h3>${n}${ocLink(k)}</h3><div class="shifts">`+SHIFTS.map(([sk,sn])=>{
     const sl=sched.slots?.[k+"_"+sk]||{pairs:[],reception:[],free:[]};
     const u=sl.pairs.length,ch=cfg.settings.chairs;
     let c=`<div class="shift"><h4>${sn}<span class="units ${u>=ch?"full":"gap"}">${fa(u)} از ${fa(ch)} یونیت</span></h4>`;
     if(!sl.pairs.length) c+=`<p class="note" style="margin:0">دکتری نیست</p>`;
     for(const p of sl.pairs) c+=`<div class="pair">${p.u?`<span class="unitno" title="یونیت">${fa(p.u)}</span>`:""}<span class="chip doctor">${esc(nm(p.d))}${spec(p.d)?`<span class="spec">${esc(spec(p.d))}</span>`:""}</span><span class="link"></span>${p.a?`<span class="chip assistant">${esc(nm(p.a))}</span>`:`<span class="chip missing">بدون دستیار</span>`}</div>`;
     c+=`<div class="pair">${sl.reception.length?sl.reception.map(r=>`<span class="chip reception">${esc(nm(r))}</span>`).join(""):`<span class="chip missing">بدون منشی</span>`}</div>`;
-    {const gh=gapsHtmlFor(k+"_"+sk); if(gh) c+=`<div class="gaps">${gh}</div>`;}
     return c+`</div>`;
   }).join("")+`</div></section>`).join("")+`</div>`;
   h+=conflictBanner();
-  h+=requestsPanel()+alertsListPanel();
+  h+=alertsListPanel();
   if(sched.issues?.length) h+=`<div class="panel"><strong>نیاز به توجه</strong><ul class="clean issues">${sched.issues.map(i=>`<li>${esc(i)}</li>`).join("")}</ul></div>`;
   if(sched.log?.length) h+=`<div class="panel" style="margin-top:16px"><strong>تغییرات بعد از ساخت برنامه</strong><ul class="clean issues">${[...sched.log].reverse().slice(0,15).map(l=>`<li><strong>${l.who==="manager"?"مدیر":esc(nm(l.who))}</strong> <span class="note">${new Date(l.at).toLocaleString("fa-IR",{weekday:"long",hour:"2-digit",minute:"2-digit"})}</span><br>${(l.items||[]).map(esc).join("<br>")}</li>`).join("")}</ul></div>`;
   h+=`<p class="note">ساخته شده: ${new Date(sched.generatedAt).toLocaleString("fa-IR")}</p>`;
@@ -2135,13 +2135,30 @@ function gapItemHtml(key,g){
     ${cands.length?`<div class="note" style="margin:2px 0 4px">${notAllowed?`در دسترس هستند ولی جزو دستیارهای مجاز ${esc(nm(g.d))} نیستند:`:"در دسترس:"}</div><div class="row">${btns}</div>`:`<div class="note">کسی در این زمان آزاد نیست${g.t==="unit"?"":"؛ می‌توانید با دستور بالا از شیفت دیگری کسی را بیاورید"}.</div>`}</div>`;
 }
 function gapsHtmlFor(key){ return slotGaps(sched,key).map(g=>gapItemHtml(key,g)).join(""); }
-/* یک خط خلاصه بالای تخته */
-function gapsSummary(){
-  if(!sched) return "";
+/* پیوند «جاهای خالی»: برگه‌ای باز می‌کند که همه را روز به روز و صبح/عصر با دکمهٔ رفع با یک کلیک نشان می‌دهد */
+function gapCounts(){
   let n=0,fix=0;
   for(const [k] of DAYS) for(const [sk] of SHIFTS){ const key=k+"_"+sk; for(const g of slotGaps(sched,key)){ n++; if(gapCands(key,g).length) fix++ } }
-  if(!n) return "";
-  return `<p class="note" style="margin:6px 0"><strong>جاهای خالی: ${fa(n)} مورد</strong>${fix?` — ${fa(fix)} مورد با یک کلیک پر می‌شود`:""}. هر کدام زیر شیفت همان روز است.</p>`;
+  return {n,fix};
+}
+function gapsSummary(){
+  if(!sched) return "";
+  const {n,fix}=gapCounts(); if(!n) return "";
+  return `<button class="gapslink" data-act="gaps-open"><span><strong>جاهای خالی: ${fa(n)} مورد</strong>${fix?` <span class="note">— ${fa(fix)} مورد با یک کلیک پر می‌شود</span>`:""}</span><span>‹</span></button>`;
+}
+function gapsPageHtml(){
+  if(!sched) return "";
+  let h="";
+  for(const [k,dn] of DAYS){
+    let inner="";
+    for(const [sk,sn] of SHIFTS){ const gh=gapsHtmlFor(k+"_"+sk); if(gh) inner+=`<div class="note" style="font-weight:700;margin-top:6px">${sn}</div>${gh}`; }
+    if(inner) h+=`<div class="panel"><strong>${dn}</strong>${inner}</div>`;
+  }
+  return h||`<div class="panel"><p class="okline" style="margin:0">جای خالی‌ای نیست ✓</p></div>`;
+}
+function openGapsPage(){
+  Shell.sheet(`<div class="pagehead"><button class="btn quiet" data-close-sheet>‹ بازگشت</button><strong>جاهای خالی</strong></div><div id="pageBody">${gapsPageHtml()}</div>`,null,{page:true,kind:"gaps"});
+  bind();
 }
 async function quickFix(t,key,a,b,always){
   const S=structuredClone(sched), sl=S.slots[key], L=keyLabel(key), notices=[]; let item="";
@@ -2942,6 +2959,7 @@ async function act(a,btn){
   if(a==="fb-done-toggle"){fbShowDone=!fbShowDone;return render();}
   if(a==="seen"){try{localStorage.setItem("seen_"+who,String(Date.now()))}catch(e){};return render()}
   if(a==="mgr-parse") return mgrParseRun();
+  if(a==="gaps-open") return openGapsPage();
   if(a==="mgr-open"){
     Shell.sheet(`<h2>تغییر برنامه این هفته</h2><div id="pageBody">${mgrPromptBox(true)}</div>`,null,{kind:"mgrprompt"}); bind(); const t=$("#mgrTxtS"); if(t) t.focus(); return;
   }
