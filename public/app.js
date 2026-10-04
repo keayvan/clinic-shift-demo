@@ -2697,7 +2697,7 @@ function inventoryTab(){
       h+=`<tr><td>${esc(it.name)}${isLow?' <span class="chip missing">کم</span>':""}</td><td>${esc(it.unit)}</td>
         <td><input type="number" min="0" data-qty="${id}" value="${it.qty}" style="width:70px"></td>
         <td><input type="number" min="0" data-min="${id}" value="${it.minQty}" style="width:60px"></td>
-        <td><button class="btn quiet" data-act="inv-save" data-id="${id}">ذخیره</button> <button class="btn ${invOpenId===id?"primary":"quiet"}" data-act="inv-open" data-id="${id}">گردش</button></td>
+        <td><button class="btn quiet" data-act="inv-save" data-id="${id}">ذخیره</button> <button class="btn ${invOpenId===id?"primary":"quiet"}" data-act="inv-open" data-id="${id}">${invOpenId===id?"بستن گردش":"گردش"}</button></td>
         <td><button class="x" data-act="inv-del" data-id="${id}">حذف</button></td></tr>${invOpenId===id?`<tr><td colspan="6" style="text-align:start">${invMoveHtml(id,it)}</td></tr>`:""}`;
     }
     h+=`</tbody></table></div>`;
@@ -2716,7 +2716,7 @@ function inventoryTab(){
 }
 function invMoveHtml(id,it){
   const mv=(it.moves||[]).slice().reverse(), fd=t=>{const d=new Date(t),[jy,jm,jd]=gregorianToJalali(d.getFullYear(),d.getMonth()+1,d.getDate());return fa(jd)+" "+PERSIAN_MONTHS[jm-1]+" "+d.toLocaleTimeString("fa-IR",{hour:"2-digit",minute:"2-digit"})};
-  return `<strong>گردش «${esc(it.name)}»</strong>
+  return `<div class="row" style="justify-content:space-between;align-items:center"><strong>گردش «${esc(it.name)}»</strong><button class="btn quiet" data-act="inv-open" data-id="${id}" style="padding:4px 12px">✕ بستن</button></div>
     <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">
       <select id="invMvType" aria-label="نوع">${["in","use","return","waste"].map(k=>`<option value="${k}" ${invMove.type===k?"selected":""}>${INV_MV[k]}</option>`).join("")}</select>
       <input type="number" min="1" id="invMvQty" placeholder="تعداد" value="${esc(invMove.qty)}" style="width:80px">
@@ -3086,7 +3086,7 @@ async function act(a,btn){
   if(a==="pat-intake") return patIntakeRun();
   if(a==="inv-add") return invAdd();
   if(a==="inv-save") return invSave(btn.dataset.id);
-  if(a==="inv-open"){invOpenId=invOpenId===btn.dataset.id?null:btn.dataset.id;invMoveErr="";return render()}
+  if(a==="inv-open"){const closing=invOpenId===btn.dataset.id; invOpenId=closing?null:btn.dataset.id; invMoveErr=""; invMove={type:"in",qty:"",doc:"",note:""}; return render()}
   if(a==="inv-move") return invMoveSave(btn.dataset.id);
   if(a==="inv-del") return invDelete(btn.dataset.id);
   if(a==="ap-add") return apptAdd(btn);
